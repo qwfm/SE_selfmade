@@ -40,7 +40,7 @@ class Lot(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     seller = relationship("User", back_populates="lots")
-    bids = relationship("Bid", back_populates="lot", order_by="desc(Bid.amount)")
+    bids = relationship("Bid", back_populates="lot", order_by="desc(Bid.amount)", cascade="all, delete-orphan")
     payment = relationship("Payment", back_populates="lot", uselist=False)
 
 class Bid(Base):

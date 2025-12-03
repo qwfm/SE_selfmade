@@ -1,3 +1,4 @@
+// client/src/pages/ProfilePage.jsx - ОНОВЛЕНИЙ
 import { useEffect, useState } from 'react';
 import { useApi } from '../useApi';
 import { useAuth0 } from '@auth0/auth0-react';
@@ -8,51 +9,48 @@ export default function ProfilePage() {
   const { user } = useAuth0(); 
   
   const [profile, setProfile] = useState(null);
-  const [myLots, setMyLots] = useState([]); // Мої лоти
-  const [myBids, setMyBids] = useState([]); // Мої ставки
+  const [myLots, setMyLots] = useState([]);
+  const [myBids, setMyBids] = useState([]);
   
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState({});
   const [loading, setLoading] = useState(true);
 
   // Завантаження всіх даних
+  const loadAll = async () => {
+    try {
+      setLoading(true);
+      
+      const profileRes = await api.get('/users/me');
+      setProfile(profileRes.data);
+      setForm({
+        username: profileRes.data.username || '',
+        phone_number: profileRes.data.phone_number || '',
+        bio: profileRes.data.bio || ''
+      });
+
+      const lotsRes = await api.get('/lots/my');
+      setMyLots(lotsRes.data);
+
+      const bidsRes = await api.get('/bids/my');
+      setMyBids(bidsRes.data);
+
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const loadAll = async () => {
-      try {
-        setLoading(true);
-        
-        // 1. Профіль
-        const profileRes = await api.get('/users/me');
-        setProfile(profileRes.data);
-        setForm({
-          username: profileRes.data.username || '',
-          phone_number: profileRes.data.phone_number || '',
-          bio: profileRes.data.bio || ''
-        });
-
-        // 2. Мої лоти (створені мною)
-        const lotsRes = await api.get('/lots/my');
-        setMyLots(lotsRes.data);
-
-        // 3. Мої ставки (зроблені мною)
-        const bidsRes = await api.get('/bids/my'); // Це новий ендпоінт
-        setMyBids(bidsRes.data);
-
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadAll();
-  }, [api]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSave = async () => {
     try {
       await api.patch('/users/me', form);
       setIsEditing(false);
-      // Оновити дані на екрані
       const res = await api.get('/users/me');
       setProfile(res.data);
     } catch (err) {
@@ -67,6 +65,33 @@ export default function ProfilePage() {
       bio: profile.bio || ''
     });
     setIsEditing(false);
+  };
+
+  // НОВИЙ: Скасувати ставку
+  const handleCancelBid = async (bidId) => {
+    if (!window.confirm("Ви впевнені, що хочете скасувати цю ставку?")) return;
+    
+    try {
+      await api.delete(`/bids/${bidId}`);
+      alert("Ставку успішно скасовано!");
+      loadAll(); // Оновлюємо дані
+    } catch (err) {
+      const msg = err.response?.data?.detail || err.message;
+      alert(`Помилка: ${msg}`);
+    }
+  };
+
+  // НОВИЙ: Скасувати лот
+  const handleDeleteLot = async (lotId) => {
+    if (!window.confirm("Ви дійсно хочете видалити цей лот?")) return;
+    try {
+      await api.delete(`/lots/${lotId}`); // Тепер цей запит пройде успішно
+      alert("Лот видалено!");
+      // Оновлюємо список
+      loadAll(); 
+    } catch (err) {
+      alert("Помилка видалення: " + (err.response?.data?.detail || err.message));
+    }
   };
 
   if (loading || !profile) return <div style={{padding: '40px', textAlign: 'center'}}>Завантаження профілю...</div>;
@@ -159,7 +184,23 @@ export default function ProfilePage() {
                           {lot.status.toUpperCase()}
                        </div>
                     </div>
-                    <Link to={`/lot/${lot.id}`} style={linkBtnStyle}>Перейти</Link>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <Link to={`/lot/${lot.id}`} style={linkBtnStyle}>Перейти</Link>
+                      {lot.status === 'active' && (
+                        <button 
+                          onClick={() => handleDeleteLot(lot.id)}
+                          style={{
+                            ...linkBtnStyle,
+                            background: '#fee2e2',
+                            color: '#991b1b',
+                            border: 'none',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          🗑️
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
              </div>
@@ -177,15 +218,32 @@ export default function ProfilePage() {
                 {myBids.map(bid => (
                   <div key={bid.id} style={cardItemStyle}>
                     <div style={{ flex: 1 }}>
-                       {/* Назва лота, яку ми витягли завдяки LotMinimal */}
                        <div style={{ fontWeight: 'bold' }}>{bid.lot ? bid.lot.title : `Лот #${bid.lot_id}`}</div>
                        <div style={{ color: '#10b981', fontWeight: 'bold' }}>Ваша ставка: ${bid.amount}</div>
                        <div style={{ fontSize: '0.85rem', color: '#999' }}>
                           {new Date(bid.timestamp).toLocaleDateString()} {new Date(bid.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                        </div>
-                       {!bid.is_active && <span style={{fontSize: '0.8rem', color: 'red'}}>Ставка неактивна</span>}
+                       {bid.lot && bid.lot.status !== 'active' && (
+                         <span style={{fontSize: '0.8rem', color: '#999'}}>Аукціон завершено</span>
+                       )}
                     </div>
-                    <Link to={`/lot/${bid.lot_id}`} style={linkBtnStyle}>Перейти</Link>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <Link to={`/lot/${bid.lot_id}`} style={linkBtnStyle}>Перейти</Link>
+                      {bid.lot && bid.lot.status === 'active' && (
+                        <button 
+                          onClick={() => handleCancelBid(bid.id)}
+                          style={{
+                            ...linkBtnStyle,
+                            background: '#fee2e2',
+                            color: '#991b1b',
+                            border: 'none',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ❌
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
              </div>
