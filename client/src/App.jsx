@@ -10,6 +10,7 @@ import LotDetailPage from './pages/LotDetailPage';
 import CreateLotPage from './pages/CreateLotPage';
 import ProfilePage from './pages/ProfilePage';
 import CompleteProfilePage from './pages/CompleteProfilePage'; // Нова сторінка
+import PaymentPage from './pages/PaymentPage';
 
 function App() {
   const { loginWithRedirect, logout, isAuthenticated, user, isLoading: authLoading } = useAuth0();
@@ -200,6 +201,7 @@ function App() {
           <Route path="/lot/:id" element={<LotDetailPage />} />
           <Route path="/create" element={<CreateLotPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/payment/:lotId" element={<PaymentPage />} />
         </Routes>
       </div>
 

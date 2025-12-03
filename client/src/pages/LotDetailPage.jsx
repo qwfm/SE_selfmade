@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom'; // 1. Додали useNavigate
 import { useApi } from '../useApi';
 import { useAuth0 } from '@auth0/auth0-react';
 
 export default function LotDetailPage() {
   const { id } = useParams();
   const api = useApi();
+  const navigate = useNavigate(); // 2. Ініціалізація навігації
   const { isAuthenticated, loginWithRedirect } = useAuth0();
   
   // Стани даних
@@ -68,20 +69,9 @@ export default function LotDetailPage() {
     }
   };
 
-  const handlePayment = async () => {
-    if (!lot) return;
-    const confirmPay = window.confirm(`Ви перемогли! Оплатити лот за сумою $${lot.current_price}?`);
-    
-    if (confirmPay) {
-      try {
-        await api.post('/payments/', { lot_id: lot.id });
-        alert("Оплата успішна! Лот ваш.");
-        fetchData();
-      } catch (err) {
-        const msg = err.response?.data?.detail || err.message;
-        alert(`Помилка оплати: ${msg}`);
-      }
-    }
+  // 3. Змінена функція оплати (веде на нову сторінку)
+  const handlePayment = () => {
+    navigate(`/payment/${lot.id}`);
   };
 
   // ФУНКЦІЯ ЗАКРИТТЯ АУКЦІОНУ ПРОДАВЦЕМ
@@ -117,7 +107,6 @@ export default function LotDetailPage() {
   const isPaymentDeadlinePassed = paymentDeadlineDate && now > paymentDeadlineDate;
 
   // Визначення переможця
-  // (Фільтруємо активні ставки, якщо потрібно, або просто беремо першу)
   const activeBids = bids.filter(b => b.is_active !== false);
   const highestBid = activeBids.length > 0 ? activeBids[0] : null;
 
@@ -230,8 +219,8 @@ export default function LotDetailPage() {
             </div>
           </div>
           
-          {/* Таймер оплати (якщо статус pending_payment) */}
-          {paymentDeadlineDate && !isSold && (
+          {/* Таймер оплати */}
+          {lot.payment_deadline ? (
             <div style={{
               padding: '1rem',
               background: isPaymentDeadlinePassed ? '#fef2f2' : '#f0f9ff',
@@ -246,6 +235,18 @@ export default function LotDetailPage() {
               }}>
                 {paymentDeadlineDate.toLocaleString('uk-UA')}
                 {isPaymentDeadlinePassed && <span style={{ marginLeft: '0.5rem' }}>⚠️</span>}
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              padding: '1rem',
+              background: '#f9fafb',
+              borderRadius: '12px',
+              border: '2px solid #e5e7eb'
+            }}>
+              <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem' }}>Дедлайн аукціону</div>
+              <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#374151' }}>
+                 {new Date(lot.deadline).toLocaleString('uk-UA')}
               </div>
             </div>
           )}
@@ -281,8 +282,8 @@ export default function LotDetailPage() {
 
         {/* --- ЗОНА ДІЙ --- */}
 
-        {/* 1. Активний лот: Ставки (Тільки для покупців) */}
-        {isActive && !isSeller && (
+        {/* 1. Активний лот: Ставки */}
+        {!isClosedUnsold && lot.status === 'active' && !isSeller && (
           <div style={{
             background: '#eff6ff',
             borderRadius: '16px',
@@ -341,8 +342,8 @@ export default function LotDetailPage() {
           </div>
         )}
 
-        {/* 2. Продавець (власник) - КНОПКА ЗАКРИТТЯ АУКЦІОНУ */}
-        {isActive && isSeller && (
+        {/* 2. Продавець (власник) */}
+        {!isClosedUnsold && isSeller && lot.status === 'active' && (
              <div style={{ background: '#fffbeb', borderRadius: '16px', padding: '1.5rem', border: '2px solid #fde68a' }}>
                  <h3 style={{ marginTop: 0, color: '#92400e' }}>Керування лотом</h3>
                  <p style={{ color: '#b45309', marginBottom: '1rem' }}>
@@ -367,13 +368,13 @@ export default function LotDetailPage() {
              </div>
         )}
 
-        {/* 3. Переможець: Оплата (З'являється тільки коли аукціон в статусі pending_payment) */}
+        {/* 3. Переможець: Оплата */}
         {isPendingPayment && isWinner && !isPaymentDeadlinePassed && (
             <div style={{ padding: '2rem', background: '#ecfdf5', borderRadius: '16px', border: '2px solid #d1fae5', textAlign: 'center' }}>
                 <h3 style={{ color: '#065f46', marginTop: 0 }}>Вітаємо! Ви перемогли 🎉</h3>
                 <p style={{ marginBottom: '1.5rem', color: '#047857' }}>Ваша ставка <strong>${highestBid?.amount}</strong> виграла.</p>
                 <button 
-                    onClick={handlePayment} 
+                    onClick={handlePayment} // <--- Тут ми змінили на навігацію
                     style={{
                         padding: '1rem 3rem',
                         background: '#10b981',
@@ -386,7 +387,7 @@ export default function LotDetailPage() {
                         boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
                     }}
                 >
-                    Оплатити зараз
+                    Перейти до оплати
                 </button>
             </div>
         )}
@@ -399,10 +400,10 @@ export default function LotDetailPage() {
             </div>
         )}
 
-        {/* 4. Не переможець (інші учасники, коли аукціон чекає оплати) */}
+        {/* 4. Не переможець */}
         {isPendingPayment && !isWinner && (
             <div style={{ padding: '1.5rem', background: '#f3f4f6', borderRadius: '16px', border: '2px solid #e5e7eb' }}>
-                <h3 style={{ marginTop: 0, color: '#374151' }}>Аукціон зупинено</h3>
+                <h3 style={{ marginTop: 0, color: '#374151' }}>Аукціон завершено</h3>
                 <p style={{ color: '#6b7280' }}>
                     Переможець: <strong>{highestBid ? `Користувач #${highestBid.user_id}` : "Ставок не було"}</strong>
                 </p>
@@ -413,7 +414,7 @@ export default function LotDetailPage() {
         )}
 
         {/* 5. Продано */}
-        {isSold && (
+        {lot.status === 'sold' && (
             <div style={{ padding: '1.5rem', background: '#fef2f2', borderRadius: '16px', border: '2px solid #fecaca', textAlign: 'center' }}>
                 <h3 style={{ color: '#ef4444', marginTop: 0 }}>Лот продано 🔒</h3>
             </div>
@@ -433,8 +434,8 @@ export default function LotDetailPage() {
                     <div key={bid.id} style={{ 
                         display: 'flex', 
                         justifyContent: 'space-between', 
-                        alignItems: 'center',
-                        padding: '1rem',
+                        alignItems: 'center', 
+                        padding: '1rem', 
                         background: index === 0 ? '#f0fdf4' : 'white',
                         border: index === 0 ? '1px solid #bbf7d0' : '1px solid #f3f4f6',
                         borderRadius: '12px'
@@ -444,11 +445,11 @@ export default function LotDetailPage() {
                             <div>
                                 <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#1f2937' }}>${bid.amount}</div>
                                 <div style={{ fontSize: '0.9rem', color: '#6b7280' }}>
-                                    {bid.user_id === myDbId ? <span style={{color: '#6366f1', fontWeight: 'bold'}}>Ви</span> : (
-                                                                                                                                    <span>
-                                                                                                                                        {bid.bidder?.username || bid.bidder?.email || `Користувач #${bid.user_id}`}
-                                                                                                                                    </span>
-                                                                                                                                )}
+                                    {bid.user_id === myDbId ? (
+                                        <span style={{color: '#6366f1', fontWeight: 'bold'}}>Ви</span>
+                                    ) : (
+                                        `Користувач #${bid.user_id}`
+                                    )}
                                 </div>
                             </div>
                         </div>
