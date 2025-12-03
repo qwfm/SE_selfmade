@@ -1,5 +1,7 @@
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
+import { useEffect, useState } from 'react';
+import { useApi } from './useApi'; // Імпортуємо наш хук
 
 // Імпорт сторінок
 import MainPage from './pages/MainPage';
@@ -7,16 +9,41 @@ import LotsPage from './pages/LotsPage';
 import LotDetailPage from './pages/LotDetailPage';
 import CreateLotPage from './pages/CreateLotPage';
 import ProfilePage from './pages/ProfilePage';
+import CompleteProfilePage from './pages/CompleteProfilePage'; // Нова сторінка
 
 function App() {
-  const { loginWithRedirect, logout, isAuthenticated, user, isLoading } = useAuth0();
+  const { loginWithRedirect, logout, isAuthenticated, user, isLoading: authLoading } = useAuth0();
   const location = useLocation();
+  const api = useApi();
 
-  // Функція для перевірки активного маршруту (для підсвітки в меню)
-  const isActive = (path) => location.pathname === path;
+  // Стан: чи заповнив юзер профіль?
+  // null = ще не знаємо, false = ні, true = так
+  const [isProfileComplete, setIsProfileComplete] = useState(null);
 
-  // Поки Auth0 перевіряє токен, показуємо спіннер
-  if (isLoading) {
+  // Перевіряємо профіль при вході
+  useEffect(() => {
+    if (isAuthenticated) {
+      api.get('/users/me')
+        .then(res => {
+          // Якщо немає телефону - вважаємо профіль незаповненим
+          if (!res.data.phone_number) {
+            setIsProfileComplete(false);
+          } else {
+            setIsProfileComplete(true);
+          }
+        })
+        .catch(err => {
+          console.error("Error fetching profile:", err);
+          // Якщо помилка, пускаємо (щоб не блокувати навічно), або обробляємо інакше
+          setIsProfileComplete(true); 
+        });
+    } else {
+      setIsProfileComplete(true); // Для гостей профіль "заповнений" (не потрібен)
+    }
+  }, [isAuthenticated, api]); // Залежність від api гарантує, що токен готовий
+
+  // Поки Auth0 думає АБО поки ми перевіряємо базу даних -> спіннер
+  if (authLoading || (isAuthenticated && isProfileComplete === null)) {
     return (
       <div style={{
         display: 'flex',
@@ -30,9 +57,32 @@ function App() {
           <div className="spinner"></div>
           Завантаження...
         </div>
+        <style>{`
+        .spinner {
+          width: 50px;
+          height: 50px;
+          border: 4px solid #e5e7eb;
+          border-top: 4px solid #6366f1;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+          margin: 0 auto 20px;
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
       </div>
     );
   }
+
+  // ЯКЩО ПРОФІЛЬ НЕ ЗАПОВНЕНИЙ -> БЛОКУЄМО ВСЕ І ПОКАЗУЄМО ФОРМУ
+  if (isAuthenticated && isProfileComplete === false) {
+    return <CompleteProfilePage onComplete={() => setIsProfileComplete(true)} />;
+  }
+
+  // Звичайний рендер додатку
+  const isActive = (path) => location.pathname === path;
 
   return (
     <div style={{ minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -153,7 +203,7 @@ function App() {
         </Routes>
       </div>
 
-      {/* --- ГЛОБАЛЬНІ СТИЛІ (CSS-in-JS хак для анімації спіннера) --- */}
+      {/* --- ГЛОБАЛЬНІ СТИЛІ --- */}
       <style>{`
         .spinner {
           width: 50px;
