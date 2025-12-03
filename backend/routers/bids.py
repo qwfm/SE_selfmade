@@ -116,9 +116,11 @@ async def place_bid(
     return new_bid
 
 # Отримати історію ставок (GET)
+# 2. Отримати історію ставок для лота
 @router.get("/{lot_id}", response_model=list[BidOut])
 async def get_lot_bids(lot_id: int, db: AsyncSession = Depends(get_db)):
-    query = select(Bid).where(Bid.lot_id == lot_id).order_by(Bid.amount.desc())
+    query = select(Bid).options(joinedload(Bid.bidder)).where(Bid.lot_id == lot_id).order_by(Bid.amount.desc())
+    
     result = await db.execute(query)
     bids = result.scalars().all()
     return bids

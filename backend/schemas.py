@@ -96,7 +96,7 @@ class BidOut(BaseModel):
     timestamp: Optional[datetime] = None
     user_id: Optional[int] = None
     lot_id: Optional[int] = None
-    
+    bidder: Optional[UserPublic] = None
     # Головна причина помилки - це поле. Тепер воно приймає NULL.
     is_active: Optional[bool] = True 
 

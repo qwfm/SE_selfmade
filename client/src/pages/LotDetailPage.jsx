@@ -444,7 +444,11 @@ export default function LotDetailPage() {
                             <div>
                                 <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#1f2937' }}>${bid.amount}</div>
                                 <div style={{ fontSize: '0.9rem', color: '#6b7280' }}>
-                                    {bid.user_id === myDbId ? <span style={{color: '#6366f1', fontWeight: 'bold'}}>Ви</span> : `Користувач #${bid.user_id}`}
+                                    {bid.user_id === myDbId ? <span style={{color: '#6366f1', fontWeight: 'bold'}}>Ви</span> : (
+                                                                                                                                    <span>
+                                                                                                                                        {bid.bidder?.username || bid.bidder?.email || `Користувач #${bid.user_id}`}
+                                                                                                                                    </span>
+                                                                                                                                )}
                                 </div>
                             </div>
                         </div>
