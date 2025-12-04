@@ -202,3 +202,108 @@ async def delete_lot(
     await db.commit()
     
     return {"message": "Lot deleted"}
+
+@router.patch("/{lot_id}")
+async def update_lot(
+    lot_id: int,
+    title: str = Form(None),
+    description: str = Form(None),
+    start_price: float = Form(None),
+    min_step: float = Form(None),
+    # Нові параметри для картинок
+    new_images: List[UploadFile] = File(default=None),
+    delete_image_ids: List[int] = Form(default=None), # Список ID для видалення
+    current_user: User = Depends(get_current_user_db),
+    db: AsyncSession = Depends(get_db)
+):
+    # 1. Знаходимо лот з картинками
+    query = select(Lot).options(joinedload(Lot.images)).where(Lot.id == lot_id)
+    result = await db.execute(query)
+    lot = result.unique().scalar_one_or_none()
+
+    if not lot:
+        raise HTTPException(status_code=404, detail="Lot not found")
+
+    # 2. Перевірка прав і ставок
+    if lot.seller_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    bids_query = select(Bid).where(Bid.lot_id == lot_id)
+    bids_res = await db.execute(bids_query)
+    if len(bids_res.scalars().all()) > 0:
+        raise HTTPException(status_code=400, detail="Cannot edit lot after bids have been placed")
+
+    # 3. Валідація ліміту картинок (5 штук)
+    current_images_count = len(lot.images)
+    delete_count = len(delete_image_ids) if delete_image_ids else 0
+    new_count = len([img for img in new_images if img.filename]) if new_images else 0
+    
+    final_count = current_images_count - delete_count + new_count
+    
+    if final_count > 5:
+        raise HTTPException(status_code=400, detail=f"Total images cannot exceed 5. Resulting count: {final_count}")
+
+    # 4. Оновлення текстових полів
+    if title: lot.title = title
+    if description: lot.description = description
+    if min_step: lot.min_step = min_step
+    if start_price:
+        lot.start_price = start_price
+        lot.current_price = start_price
+
+    # 5. ВИДАЛЕННЯ КАРТИНОК
+    if delete_image_ids:
+        # Фільтруємо картинки, які належать цьому лоту і є в списку на видалення
+        images_to_delete = [img for img in lot.images if img.id in delete_image_ids]
+        
+        for img in images_to_delete:
+            # Видаляємо файл з диску
+            if "uploads/" in img.image_url:
+                try:
+                    filename = img.image_url.split("/")[-1]
+                    if os.path.exists(f"uploads/{filename}"):
+                        os.remove(f"uploads/{filename}")
+                except Exception as e:
+                    print(f"Error deleting file: {e}")
+            
+            # Видаляємо з БД
+            await db.delete(img)
+            
+            # Якщо ми видалили обкладинку (image_url в Lot), треба очистити це поле
+            if lot.image_url == img.image_url:
+                lot.image_url = None
+
+    # 6. ДОДАВАННЯ НОВИХ КАРТИНОК
+    if new_images:
+        for img in new_images:
+            if img.filename:
+                file_ext = img.filename.split(".")[-1]
+                file_name = f"{uuid.uuid4()}.{file_ext}"
+                file_path = f"uploads/{file_name}"
+                
+                with open(file_path, "wb") as buffer:
+                    shutil.copyfileobj(img.file, buffer)
+                
+                full_url = f"http://localhost:8000/uploads/{file_name}"
+                
+                new_image_obj = LotImage(image_url=full_url, lot_id=lot.id)
+                db.add(new_image_obj)
+                
+                # Якщо обкладинки немає (або ми її видалили), ставимо першу нову як обкладинку
+                if not lot.image_url:
+                    lot.image_url = full_url
+
+    await db.commit()
+    
+    # Оновлюємо обкладинку, якщо список змінився, а image_url пустий
+    # (Беремо першу з тих, що залишились)
+    await db.refresh(lot)
+    # Re-fetch images to be sure
+    lot_reloaded = await db.execute(select(Lot).options(joinedload(Lot.images)).where(Lot.id == lot_id))
+    lot = lot_reloaded.unique().scalar_one()
+    
+    if not lot.image_url and lot.images:
+        lot.image_url = lot.images[0].image_url
+        await db.commit()
+
+    return lot
