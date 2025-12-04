@@ -440,7 +440,7 @@ export default function ProfilePage() {
                           {new Date(bid.timestamp).toLocaleDateString()} {new Date(bid.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                        </div>
                        
-                       {!bid.is_active && <span style={{fontSize: '0.8rem', color: '#ef4444', fontWeight: 'bold'}}>✖ Ставка неактивна</span>}
+                       {!bid.is_active && <span style={{fontSize: '0.8rem', color: '#ef4444', fontWeight: 'bold'}}>✖ Ставка неактивна (Термін оплати минув)</span>}
                        
                        {bid.lot && (
                            <div style={{marginTop: '5px'}}>

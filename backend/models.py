@@ -1,3 +1,4 @@
+# backend/models.py
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Numeric, DateTime, Text, func
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime
@@ -16,8 +17,8 @@ class User(Base):
     
     # --- БЛОКУВАННЯ ---
     is_blocked = Column(Boolean, default=False)
-    ban_reason = Column(String, nullable=True) # Причина бану
-    ban_until = Column(DateTime(timezone=True), nullable=True) # Якщо NULL і is_blocked=True -> Назавжди
+    ban_reason = Column(String, nullable=True)
+    ban_until = Column(DateTime(timezone=True), nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     phone_number = Column(String, nullable=True)
@@ -34,22 +35,40 @@ class Lot(Base):
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     start_price = Column(Numeric(10, 2), nullable=False)
-    current_price = Column(Numeric(10, 2), nullable=True)
-    min_step = Column(Numeric(10, 2), default=1.0)
-    status = Column(String, default="active") # active, sold, closed
+    current_price = Column(Numeric(10, 2), nullable=True) # Змінюється при ставках
+    min_step = Column(Numeric(10, 2), default=10.00)
+    
+    # Статус: active, pending_payment, sold, closed_unsold, closed
+    status = Column(String, default="active", index=True)
+    
+    # URL головної картинки (обкладинки)
     image_url = Column(String, nullable=True)
     
-    payment_deadline = Column(DateTime(timezone=True), nullable=True)
+    # Налаштування дедлайну оплати
     payment_deadline_days = Column(Integer, nullable=False, default=0)
     payment_deadline_hours = Column(Integer, nullable=False, default=24)
     payment_deadline_minutes = Column(Integer, nullable=False, default=0)
+
+    # Реальний дедлайн (встановлюється коли лот переходить в pending_payment)
+    payment_deadline = Column(DateTime(timezone=True), nullable=True)
     
     seller_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     seller = relationship("User", back_populates="lots")
+    # Додали cascade="all, delete-orphan" для images
+    images = relationship("LotImage", back_populates="lot", cascade="all, delete-orphan")
     bids = relationship("Bid", back_populates="lot", order_by="desc(Bid.amount)", cascade="all, delete-orphan")
     payment = relationship("Payment", back_populates="lot", uselist=False, cascade="all, delete-orphan")
+
+class LotImage(Base):
+    __tablename__ = "lot_images"
+
+    id = Column(Integer, primary_key=True, index=True)
+    image_url = Column(String, nullable=False)
+    lot_id = Column(Integer, ForeignKey("lots.id"))
+    
+    lot = relationship("Lot", back_populates="images")
 
 class Bid(Base):
     __tablename__ = "bids"
@@ -72,8 +91,8 @@ class Payment(Base):
     amount = Column(Numeric(10, 2), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
-    lot_id = Column(Integer, ForeignKey("lots.id"))
     user_id = Column(Integer, ForeignKey("users.id"))
-
+    lot_id = Column(Integer, ForeignKey("lots.id"))
+    
     payer = relationship("User", back_populates="payments")
     lot = relationship("Lot", back_populates="payment")

@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import List
 
 from database import get_db
 from models import Bid, Lot, User
@@ -83,7 +84,7 @@ async def place_bid(
     current_user: User = Depends(get_current_user_db),
     db: AsyncSession = Depends(get_db)
 ):
-    # ... (Ваш код створення ставки без змін) ...
+    # 1. Знаходимо лот
     query = select(Lot).where(Lot.id == lot_id)
     result = await db.execute(query)
     lot = result.scalar_one_or_none()
@@ -91,36 +92,70 @@ async def place_bid(
     if not lot:
         raise HTTPException(status_code=404, detail="Lot not found")
 
+    # 2. Перевірки правил
     if lot.seller_id == current_user.id:
         raise HTTPException(status_code=400, detail="You cannot bid on your own lot")
 
     if lot.status != "active":
         raise HTTPException(status_code=400, detail="Auction is closed")
     
+    # 3. Валідація суми (має бути більша за поточну ціну + крок)
+    # Примітка: навіть якщо користувач перебиває сам себе, він має підняти ціну відповідно до кроку
     min_bid_amount = lot.current_price + lot.min_step
+    
     if bid_data.amount < min_bid_amount:
         raise HTTPException(status_code=400, detail=f"Bid must be at least {min_bid_amount}")
 
-    new_bid = Bid(
-        amount=bid_data.amount,
-        user_id=current_user.id,
-        lot_id=lot.id,
-        timestamp=datetime.utcnow(),
-        is_active=True
+    # --- ГОЛОВНА ЗМІНА: ПЕРЕВІРКА НА ІСНУЮЧУ СТАВКУ ---
+    existing_bid_query = select(Bid).where(
+        Bid.lot_id == lot.id,
+        Bid.user_id == current_user.id,
+        Bid.is_active == True
     )
-    
+    existing_bid_result = await db.execute(existing_bid_query)
+    existing_bid = existing_bid_result.scalar_one_or_none()
+
+    final_bid = None
+
+    if existing_bid:
+        # А) ОНОВЛЮЄМО ІСНУЮЧУ СТАВКУ
+        existing_bid.amount = bid_data.amount
+        existing_bid.timestamp = datetime.now(timezone.utc)
+        final_bid = existing_bid
+        print(f"Updated existing bid #{existing_bid.id} to {bid_data.amount}")
+    else:
+        # Б) СТВОРЮЄМО НОВУ СТАВКУ
+        new_bid = Bid(
+            amount=bid_data.amount,
+            user_id=current_user.id,
+            lot_id=lot.id,
+            timestamp=datetime.now(timezone.utc),
+            is_active=True
+        )
+        db.add(new_bid)
+        final_bid = new_bid
+        print(f"Created new bid for User #{current_user.id}")
+
+    # 4. Оновлюємо ціну лота
     lot.current_price = bid_data.amount
-    db.add(new_bid)
+    
     await db.commit()
-    await db.refresh(new_bid)
-    return new_bid
+    await db.refresh(final_bid)
+    
+    return final_bid
 
 # Отримати історію ставок (GET)
 # 2. Отримати історію ставок для лота
-@router.get("/{lot_id}", response_model=list[BidOut])
-async def get_lot_bids(lot_id: int, db: AsyncSession = Depends(get_db)):
-    query = select(Bid).options(joinedload(Bid.bidder)).where(Bid.lot_id == lot_id).order_by(Bid.amount.desc())
-    
+@router.get("/{lot_id}", response_model=List[BidOut])
+async def get_bids_by_lot(
+    lot_id: int, 
+    db: AsyncSession = Depends(get_db)
+):
+    # --- ЗМІНА ТУТ: Додано Bid.is_active == True ---
+    # Ми не показуємо скасовані ставки (через несплату або видалення)
+    query = select(Bid)\
+        .where(Bid.lot_id == lot_id, Bid.is_active == True)\
+        .order_by(Bid.amount.desc())
+        
     result = await db.execute(query)
-    bids = result.scalars().all()
-    return bids
+    return result.scalars().all()

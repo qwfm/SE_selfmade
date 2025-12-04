@@ -16,10 +16,19 @@ async def get_current_user_db(
     if not auth0_sub:
         raise HTTPException(status_code=401, detail="Invalid token payload")
 
+    # 1. Спроба знайти по auth0_sub (якщо користувач зайшов тим самим методом, що й раніше)
     query = select(User).where(User.auth0_sub == auth0_sub)
     result = await db.execute(query)
     user = result.scalar_one_or_none()
 
+    # 2. Якщо не знайшли по sub, але є email — шукаємо по email
+    # Це дозволяє об'єднати акаунти Google та Log/Pass
+    if user is None and email:
+        query_email = select(User).where(User.email == email)
+        result_email = await db.execute(query_email)
+        user = result_email.scalar_one_or_none()
+
+    # 3. Якщо все ще немає — створюємо нового
     if user is None:
         new_user = User(
             auth0_sub=auth0_sub,
@@ -43,11 +52,11 @@ async def get_current_user_db(
             await db.commit()
         else:
             # БАН АКТИВНИЙ
-            reason = user.ban_reason or "Порушення правил спільноти"
-            until = user.ban_until.strftime('%Y-%m-%d %H:%M') if user.ban_until else "Назавжди"
+            reason = user.ban_reason or "No reason provided"
+            until = user.ban_until.strftime("%Y-%m-%d %H:%M") if user.ban_until else "Forever"
             raise HTTPException(
                 status_code=403, 
-                detail=f"Ваш акаунт заблоковано. Причина: {reason}. Термін: {until}"
+                detail=f"Your account is blocked. Reason: {reason}. Until: {until}"
             )
-    
+
     return user

@@ -1,3 +1,4 @@
+# backend/schemas.py
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
@@ -35,23 +36,16 @@ class UserUpdate(BaseModel):
     phone_number: Optional[str] = None
     bio: Optional[str] = None
 
-# Схема для запиту на блокування
 class BlockUserRequest(BaseModel):
     reason: str
     is_permanent: bool = False
-    duration_days: Optional[int] = 0 # Якщо не permanent
+    duration_days: Optional[int] = 0
 
-# --- Payment Schemas ---
-class PaymentCreate(BaseModel):
-    lot_id: int 
-
-class PaymentOut(BaseModel):
-    id: Optional[int] = None
-    amount: Optional[Decimal] = None
-    lot_id: Optional[int] = None
-    user_id: Optional[int] = None
-    created_at: Optional[datetime] = None
-
+# --- Image Schemas (ГАЛЕРЕЯ) ---
+class LotImageOut(BaseModel):
+    id: int
+    image_url: str
+    
     class Config:
         from_attributes = True
 
@@ -64,7 +58,7 @@ class LotBase(BaseModel):
     payment_deadline_days: Optional[int] = 0
     payment_deadline_hours: Optional[int] = 24
     payment_deadline_minutes: Optional[int] = 0
-    image_url: Optional[str] = None
+    image_url: Optional[str] = None # Головна картинка (обкладинка)
 
 class LotCreate(LotBase):
     pass
@@ -72,7 +66,7 @@ class LotCreate(LotBase):
 class LotUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
-    image_url: Optional[str] = None
+    # Картинки зазвичай оновлюються окремим роутом або перезаписом
 
 class LotOut(LotBase):
     id: Optional[int] = None
@@ -83,12 +77,12 @@ class LotOut(LotBase):
     payment_deadline: Optional[datetime] = None
     
     seller: Optional[UserPublic] = None 
+    images: List[LotImageOut] = [] # Список картинок для галереї
 
     class Config:
         from_attributes = True
 
 # --- Bid Schemas ---
-
 class LotMinimal(BaseModel):
     id: Optional[int] = None
     title: Optional[str] = "Unknown Lot"
@@ -105,11 +99,25 @@ class BidOut(BaseModel):
     amount: Optional[Decimal] = None
     timestamp: Optional[datetime] = None
     user_id: Optional[int] = None
-    lot_id: Optional[int] = None
-    is_active: Optional[bool] = True 
-
+    lot_id: Optional[int] = None # <--- ВАЖЛИВО: Щоб фронт знав ID лота
+    is_active: bool = True
+    
     class Config:
         from_attributes = True
 
 class BidOutWithLot(BidOut):
     lot: Optional[LotMinimal] = None
+
+# --- Payment Schemas ---
+class PaymentCreate(BaseModel):
+    lot_id: int 
+
+class PaymentOut(BaseModel):
+    id: Optional[int] = None
+    amount: Optional[Decimal] = None
+    lot_id: Optional[int] = None
+    user_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
