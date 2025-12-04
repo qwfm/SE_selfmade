@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
 
@@ -12,6 +12,7 @@ class UserPublic(BaseModel):
     username: Optional[str] = None
     email: Optional[str] = None
     phone_number: Optional[str] = None
+    is_blocked: Optional[bool] = False
     
     class Config:
         from_attributes = True
@@ -21,6 +22,10 @@ class UserOut(UserBase):
     username: Optional[str] = None
     phone_number: Optional[str] = None
     bio: Optional[str] = None
+    is_admin: bool = False
+    is_blocked: bool = False
+    ban_reason: Optional[str] = None
+    ban_until: Optional[datetime] = None
     
     class Config:
         from_attributes = True
@@ -29,6 +34,12 @@ class UserUpdate(BaseModel):
     username: Optional[str] = None
     phone_number: Optional[str] = None
     bio: Optional[str] = None
+
+# Схема для запиту на блокування
+class BlockUserRequest(BaseModel):
+    reason: str
+    is_permanent: bool = False
+    duration_days: Optional[int] = 0 # Якщо не permanent
 
 # --- Payment Schemas ---
 class PaymentCreate(BaseModel):
@@ -56,8 +67,7 @@ class LotBase(BaseModel):
     image_url: Optional[str] = None
 
 class LotCreate(LotBase):
-    title: str # При створенні назва обов'язкова
-    start_price: Decimal
+    pass
 
 class LotUpdate(BaseModel):
     title: Optional[str] = None
@@ -96,13 +106,10 @@ class BidOut(BaseModel):
     timestamp: Optional[datetime] = None
     user_id: Optional[int] = None
     lot_id: Optional[int] = None
-    bidder: Optional[UserPublic] = None
-    # Головна причина помилки - це поле. Тепер воно приймає NULL.
     is_active: Optional[bool] = True 
 
     class Config:
         from_attributes = True
 
 class BidOutWithLot(BidOut):
-    # Якщо лот видалено, тут буде null, і помилки не буде
     lot: Optional[LotMinimal] = None

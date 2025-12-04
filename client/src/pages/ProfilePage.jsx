@@ -11,19 +11,27 @@ export default function ProfilePage() {
   const [myLots, setMyLots] = useState([]);
   const [myBids, setMyBids] = useState([]);
   
+  // Стани редагування профілю
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState({});
   const [loading, setLoading] = useState(true);
 
-  // --- СТАНИ ФІЛЬТРІВ ---
+  // --- АДМІНСЬКІ СТАНИ ---
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [adminSearch, setAdminSearch] = useState('');
+  const [lotIdToDelete, setLotIdToDelete] = useState('');
+  // Модальне вікно бану
+  const [showBanModal, setShowBanModal] = useState(false);
+  const [banTargetId, setBanTargetId] = useState(null);
+  const [banForm, setBanForm] = useState({ reason: '', is_permanent: false, duration_days: 7 });
+
+  // Фільтри користувача
   const [lotsFilter, setLotsFilter] = useState('all');
   const [bidsFilter, setBidsFilter] = useState('all');
 
-  // Завантаження всіх даних
   const loadAll = async () => {
     try {
       setLoading(true);
-      
       const profileRes = await api.get('/users/me');
       setProfile(profileRes.data);
       setForm({
@@ -38,6 +46,11 @@ export default function ProfilePage() {
       const bidsRes = await api.get('/bids/my');
       setMyBids(bidsRes.data);
 
+      // Якщо адмін - завантажуємо список юзерів
+      if (profileRes.data.is_admin) {
+          fetchAdminUsers();
+      }
+
     } catch (err) {
       console.error(err);
     } finally {
@@ -45,40 +58,53 @@ export default function ProfilePage() {
     }
   };
 
+  const fetchAdminUsers = async () => {
+      try {
+          const res = await api.get('/admin/users');
+          setAdminUsers(res.data);
+      } catch (e) { console.error("Admin fetch error", e); }
+  }
+
   useEffect(() => {
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api]);
 
-  // --- ЛОГІКА ФІЛЬТРАЦІЇ (useMemo для оптимізації) ---
+  // --- ФІЛЬТРИ ---
+  const filteredLots = useMemo(() => myLots.filter(l => lotsFilter === 'all' || l.status === lotsFilter), [myLots, lotsFilter]);
   
-  const filteredLots = useMemo(() => {
-    return myLots.filter(lot => {
-      if (lotsFilter === 'all') return true;
-      return lot.status === lotsFilter;
-    });
-  }, [myLots, lotsFilter]);
-
-  const filteredBids = useMemo(() => {
-    return myBids.filter(bid => {
+  const filteredBids = useMemo(() => myBids.filter(b => {
       if (bidsFilter === 'all') return true;
-      // Якщо лот видалено або дані неповні, пропускаємо або показуємо (залежить від логіки)
-      if (!bid.lot) return false; 
-      return bid.lot.status === bidsFilter;
-    });
-  }, [myBids, bidsFilter]);
+      if (!b.lot) return false;
+      return b.lot.status === bidsFilter;
+  }), [myBids, bidsFilter]);
+  
+  const filteredAdminUsers = useMemo(() => {
+      return adminUsers.filter(u => 
+        (u.username || '').toLowerCase().includes(adminSearch.toLowerCase()) || 
+        (u.email || '').toLowerCase().includes(adminSearch.toLowerCase())
+      );
+  }, [adminUsers, adminSearch]);
 
-
-  // --- ОБРОБНИКИ ПРОФІЛЮ ---
+  // --- ОБРОБНИКИ ---
   const handleSave = async () => {
     try {
       await api.patch('/users/me', form);
       setIsEditing(false);
-      const res = await api.get('/users/me');
-      setProfile(res.data);
-    } catch (err) {
-      alert("Помилка збереження: " + err.message);
-    }
+      loadAll();
+    } catch (err) { alert(err.message); }
+  };
+
+  const handleDeleteLot = async (lotId) => {
+    if (!window.confirm("Видалити лот?")) return;
+    try { await api.delete(`/lots/${lotId}`); alert("Лот видалено"); loadAll(); } 
+    catch (err) { alert(err.response?.data?.detail); }
+  };
+
+  const handleCancelBid = async (bidId) => {
+    if (!window.confirm("Скасувати ставку?")) return;
+    try { await api.delete(`/bids/${bidId}`); alert("Ставку скасовано"); loadAll(); } 
+    catch (err) { alert(err.response?.data?.detail); }
   };
 
   const handleCancel = () => {
@@ -90,26 +116,46 @@ export default function ProfilePage() {
     setIsEditing(false);
   };
 
-  const handleDeleteLot = async (lotId) => {
-    if (!window.confirm("Ви дійсно хочете видалити цей лот?")) return;
-    try {
-      await api.delete(`/lots/${lotId}`);
-      alert("Лот видалено!");
-      loadAll();
-    } catch (err) {
-      alert("Помилка видалення: " + (err.response?.data?.detail || err.message));
-    }
+  // --- АДМІНСЬКІ ДІЇ ---
+  const handleAdminDeleteLot = async () => {
+      if (!lotIdToDelete) return;
+      if (!window.confirm(`АДМІН: Ви точно хочете видалити лот ID ${lotIdToDelete}? Це незворотньо.`)) return;
+      try {
+          await api.delete(`/admin/lots/${lotIdToDelete}`);
+          alert(`Лот ${lotIdToDelete} знищено.`);
+          setLotIdToDelete('');
+          loadAll();
+      } catch (err) {
+          alert("Помилка: " + err.response?.data?.detail);
+      }
   };
 
-  const handleCancelBid = async (bidId) => {
-    if (!window.confirm("Ви впевнені, що хочете скасувати цю ставку?")) return;
-    try {
-      await api.delete(`/bids/${bidId}`);
-      alert("Ставку скасовано!");
-      loadAll();
-    } catch (err) {
-      alert("Помилка: " + (err.response?.data?.detail || err.message));
-    }
+  const openBanModal = (userId) => {
+      setBanTargetId(userId);
+      setBanForm({ reason: '', is_permanent: false, duration_days: 7 });
+      setShowBanModal(true);
+  };
+
+  const handleBlockUser = async () => {
+      try {
+          await api.post(`/admin/users/${banTargetId}/block`, banForm);
+          alert("Користувача заблоковано, його лоти видалено.");
+          setShowBanModal(false);
+          fetchAdminUsers();
+      } catch (err) {
+          alert("Помилка: " + err.response?.data?.detail);
+      }
+  };
+
+  const handleUnblockUser = async (userId) => {
+      if (!window.confirm("Розблокувати користувача?")) return;
+      try {
+          await api.post(`/admin/users/${userId}/unblock`);
+          alert("Користувача розблоковано.");
+          fetchAdminUsers();
+      } catch (err) {
+          alert("Помилка: " + err.response?.data?.detail);
+      }
   };
 
   if (loading || !profile) return (
@@ -127,14 +173,7 @@ export default function ProfilePage() {
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
       
       {/* --- БЛОК 1: ОСОБИСТА ІНФОРМАЦІЯ --- */}
-      <div style={{ 
-        background: 'white',
-        borderRadius: '16px', 
-        padding: '30px', 
-        boxShadow: '0 4px 6px rgba(0,0,0,0.05)',
-        marginBottom: '30px',
-        border: '1px solid #f3f4f6'
-      }}>
+      <div style={cardStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '30px', borderBottom: '1px solid #eee', paddingBottom: '20px' }}>
           <img 
             src={user?.picture} 
@@ -142,7 +181,10 @@ export default function ProfilePage() {
             style={{ width: '80px', height: '80px', borderRadius: '50%', border: '4px solid #e0e7ff' }} 
           />
           <div>
-            <h2 style={{ margin: 0, color: '#1f2937' }}>{profile.username || user?.nickname || 'Користувач'}</h2>
+            <h2 style={{ margin: 0, color: '#1f2937' }}>
+                {profile.username || user?.nickname || 'Користувач'}
+                {profile.is_admin && <span style={{color:'red', fontSize:'0.6em', marginLeft:'10px', verticalAlign:'middle', border:'1px solid red', padding:'2px 6px', borderRadius:'4px'}}>ADMIN</span>}
+            </h2>
             <p style={{ margin: 0, color: '#6b7280' }}>{profile.email}</p>
           </div>
         </div>
@@ -185,10 +227,131 @@ export default function ProfilePage() {
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px' }}>
+      {/* --- АДМІН ПАНЕЛЬ (Тільки для адмінів) --- */}
+      {profile.is_admin && (
+          <div style={{...cardStyle, border:'2px solid #fee2e2', marginTop:'30px', boxShadow:'0 10px 15px -3px rgba(220, 38, 38, 0.1)'}}>
+              <h2 style={{color:'#b91c1c', marginTop:0, marginBottom:'20px', borderBottom:'1px solid #fecaca', paddingBottom:'10px'}}>🛡️ Панель Адміністратора</h2>
+              
+              {/* Видалення лота */}
+              <div style={{background:'#fef2f2', padding:'20px', borderRadius:'12px', marginBottom:'30px', border:'1px solid #fecaca'}}>
+                  <h4 style={{marginTop:0, color:'#991b1b'}}>🔥 Екстрене видалення лота</h4>
+                  <div style={{display:'flex', gap:'10px'}}>
+                      <input 
+                        type="number" 
+                        placeholder="ID лота" 
+                        value={lotIdToDelete}
+                        onChange={e => setLotIdToDelete(e.target.value)}
+                        style={inputStyle}
+                      />
+                      <button onClick={handleAdminDeleteLot} style={{...editBtnStyle, background:'#ef4444', color:'white', width:'auto', whiteSpace:'nowrap'}}>ЗНИЩИТИ ЛОТ</button>
+                  </div>
+              </div>
+
+              {/* Список юзерів */}
+              <h4 style={{color:'#1f2937'}}>👥 Користувачі</h4>
+              <input 
+                placeholder="Пошук користувача (ім'я/email)..." 
+                value={adminSearch} 
+                onChange={e => setAdminSearch(e.target.value)}
+                style={{...inputStyle, marginBottom:'15px'}}
+              />
+              
+              <div style={{maxHeight:'400px', overflowY:'auto', border:'1px solid #e5e7eb', borderRadius:'8px'}}>
+                  <table style={{width:'100%', borderCollapse:'collapse', fontSize:'0.9rem'}}>
+                      <thead style={{background:'#f9fafb', position:'sticky', top:0}}>
+                          <tr>
+                              <th style={thStyle}>ID</th>
+                              <th style={thStyle}>User</th>
+                              <th style={thStyle}>Email</th>
+                              <th style={thStyle}>Статус</th>
+                              <th style={thStyle}>Дії</th>
+                          </tr>
+                      </thead>
+                      <tbody>
+                          {filteredAdminUsers.map(u => (
+                              <tr key={u.id} style={{borderBottom:'1px solid #eee', background: u.is_blocked ? '#fff5f5' : 'white'}}>
+                                  <td style={tdStyle}>{u.id}</td>
+                                  <td style={tdStyle}><strong>{u.username || 'No Name'}</strong></td>
+                                  <td style={tdStyle}>{u.email}</td>
+                                  <td style={tdStyle}>
+                                      {u.is_blocked 
+                                        ? <span style={{color:'#ef4444', fontWeight:'bold', background:'#fee2e2', padding:'2px 8px', borderRadius:'12px', fontSize:'0.8rem'}}>BANNED</span> 
+                                        : <span style={{color:'#10b981', fontWeight:'bold', background:'#dcfce7', padding:'2px 8px', borderRadius:'12px', fontSize:'0.8rem'}}>Active</span>
+                                      }
+                                  </td>
+                                  <td style={tdStyle}>
+                                      {!u.is_admin && (
+                                          u.is_blocked ? (
+                                              <button onClick={() => handleUnblockUser(u.id)} style={{...linkBtnStyle, background:'#10b981', color:'white'}}>Розбанити</button>
+                                          ) : (
+                                              <button onClick={() => openBanModal(u.id)} style={{...linkBtnStyle, background:'#ef4444', color:'white'}}>ЗАБАНИТИ</button>
+                                          )
+                                      )}
+                                  </td>
+                              </tr>
+                          ))}
+                      </tbody>
+                  </table>
+              </div>
+          </div>
+      )}
+
+      {/* МОДАЛКА БАНУ */}
+      {showBanModal && (
+          <div style={modalOverlayStyle}>
+              <div style={modalContentStyle}>
+                  <h3 style={{marginTop:0, color:'#b91c1c'}}>🚫 Блокування користувача</h3>
+                  
+                  <div style={{marginBottom:'15px'}}>
+                    <label style={labelStyle}>Причина бану:</label>
+                    <input 
+                        style={inputStyle} 
+                        value={banForm.reason} 
+                        onChange={e => setBanForm({...banForm, reason: e.target.value})}
+                        placeholder="Наприклад: Шахрайство"
+                    />
+                  </div>
+                  
+                  <div style={{marginBottom:'15px'}}>
+                      <label style={{display:'flex', alignItems:'center', gap:'10px', cursor:'pointer'}}>
+                          <input 
+                            type="checkbox" 
+                            checked={banForm.is_permanent}
+                            onChange={e => setBanForm({...banForm, is_permanent: e.target.checked})}
+                            style={{width:'20px', height:'20px'}}
+                          /> 
+                          <span style={{fontWeight:'bold'}}>Бан назавжди</span>
+                      </label>
+                  </div>
+
+                  {!banForm.is_permanent && (
+                      <div style={{marginBottom:'15px'}}>
+                          <label style={labelStyle}>Тривалість (днів):</label>
+                          <input 
+                            type="number" 
+                            style={inputStyle}
+                            value={banForm.duration_days}
+                            onChange={e => setBanForm({...banForm, duration_days: Number(e.target.value)})}
+                          />
+                      </div>
+                  )}
+
+                  <p style={{fontSize:'0.85rem', color:'#ef4444', background:'#fef2f2', padding:'10px', borderRadius:'6px'}}>
+                      ⚠️ Увага: Всі активні лоти та ставки цього користувача будуть автоматично видалені системою.
+                  </p>
+
+                  <div style={{display:'flex', gap:'10px', marginTop:'20px'}}>
+                      <button onClick={handleBlockUser} style={{...editBtnStyle, background:'#ef4444', color:'white'}}>Підтвердити БАН</button>
+                      <button onClick={() => setShowBanModal(false)} style={{...editBtnStyle, background:'#f3f4f6', color:'#374151'}}>Скасувати</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px', marginTop:'30px' }}>
         
         {/* --- БЛОК 2: МОЇ ЛОТИ --- */}
-        <div style={{ background: 'white', borderRadius: '16px', padding: '25px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', border: '1px solid #f3f4f6' }}>
+        <div style={cardStyle}>
           
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
             <h2 style={{ margin: 0, fontSize: '1.5rem', color: '#1f2937' }}>📦 Мої лоти</h2>
@@ -225,7 +388,6 @@ export default function ProfilePage() {
                     
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'flex-end' }}>
                         <Link to={`/lot/${lot.id}`} style={linkBtnStyle}>Перейти</Link>
-                        {/* Кнопка видалення тільки для активних або закритих без ставок лотів */}
                         {(lot.status === 'active' || lot.status === 'closed_unsold') && (
                             <button 
                                 onClick={() => handleDeleteLot(lot.id)}
@@ -243,7 +405,7 @@ export default function ProfilePage() {
         </div>
 
         {/* --- БЛОК 3: МОЇ СТАВКИ --- */}
-        <div style={{ background: 'white', borderRadius: '16px', padding: '25px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', border: '1px solid #f3f4f6' }}>
+        <div style={cardStyle}>
           
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
             <h2 style={{ margin: 0, fontSize: '1.5rem', color: '#1f2937' }}>💰 Мої ставки</h2>
@@ -268,7 +430,6 @@ export default function ProfilePage() {
                 {filteredBids.map(bid => (
                   <div key={bid.id} style={cardItemStyle}>
                     <div style={{ flex: 1 }}>
-                       {/* Назва лота */}
                        <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
                          {bid.lot ? bid.lot.title : <span style={{color:'red'}}>Лот видалено</span>}
                        </div>
@@ -294,7 +455,6 @@ export default function ProfilePage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'flex-end' }}>
                         {bid.lot && <Link to={`/lot/${bid.lot_id}`} style={linkBtnStyle}>Перейти</Link>}
                         
-                        {/* Кнопка скасування ставки (тільки якщо вона активна і лот активний) */}
                         {bid.is_active && bid.lot && bid.lot.status === 'active' && (
                           <button 
                             onClick={() => handleCancelBid(bid.id)}
@@ -345,6 +505,15 @@ const getStatusBadgeStyle = (status, isSmall = false) => {
         color: color,
         fontWeight: '600'
     };
+};
+
+const cardStyle = { 
+    background: 'white', 
+    borderRadius: '16px', 
+    padding: '30px', 
+    boxShadow: '0 4px 6px rgba(0,0,0,0.05)', 
+    marginBottom: '30px', 
+    border: '1px solid #f3f4f6' 
 };
 
 const rowStyle = {
@@ -413,7 +582,9 @@ const linkBtnStyle = {
   fontWeight: '600',
   whiteSpace: 'nowrap',
   textAlign: 'center',
-  minWidth: '80px'
+  minWidth: '80px',
+  border:'none',
+  cursor:'pointer'
 };
 
 const deleteBtnStyle = {
@@ -427,3 +598,10 @@ const deleteBtnStyle = {
     minWidth: '80px',
     fontWeight: '500'
 };
+
+// Admin table styles
+const thStyle = { padding:'12px', textAlign:'left', borderBottom:'2px solid #e5e7eb', color:'#4b5563' };
+const tdStyle = { padding:'12px', borderBottom:'1px solid #f3f4f6', color:'#374151' };
+
+const modalOverlayStyle = { position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.5)', display:'flex', justifyContent:'center', alignItems:'center', zIndex:1000 };
+const modalContentStyle = { background:'white', padding:'30px', borderRadius:'16px', width:'450px', maxWidth:'90%', boxShadow:'0 20px 25px -5px rgba(0, 0, 0, 0.1)' };

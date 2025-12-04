@@ -11,7 +11,7 @@ export default function PaymentPage() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
 
-  // Стан форми (фейкові дані)
+  // Стан форми
   const [formData, setFormData] = useState({
     cardNumber: '',
     cardName: '',
@@ -19,8 +19,10 @@ export default function PaymentPage() {
     cvv: ''
   });
 
+  // Стан помилок
+  const [errors, setErrors] = useState({});
+
   useEffect(() => {
-    // Завантажуємо дані про лот, щоб знати суму
     api.get(`/lots/${lotId}`)
       .then(res => setLot(res.data))
       .catch(err => {
@@ -30,28 +32,122 @@ export default function PaymentPage() {
       .finally(() => setLoading(false));
   }, [lotId, api, navigate]);
 
+  // --- ВАЛІДАТОРИ ---
+
+  // 1. Алгоритм Луна (Перевірка справжності номера картки)
+  const luhnCheck = (val) => {
+    let checksum = 0;
+    let j = 1;
+    for (let i = val.length - 1; i >= 0; i--) {
+      let calc = 0;
+      calc = Number(val.charAt(i)) * j;
+      if (calc > 9) {
+        checksum = checksum + 1;
+        calc = calc - 10;
+      }
+      checksum = checksum + calc;
+      j = (j === 1) ? 2 : 1;
+    }
+    return (checksum % 10) === 0;
+  };
+
+  const validateForm = () => {
+    const newErrors = {};
+    const cleanNumber = formData.cardNumber.replace(/\s/g, '');
+
+    // Валідація номеру картки
+    if (cleanNumber.length < 13 || cleanNumber.length > 19) {
+      newErrors.cardNumber = "Невірна довжина номера картки";
+    } else if (!luhnCheck(cleanNumber)) {
+      newErrors.cardNumber = "Недійсний номер картки (помилка алгоритму Луна)";
+    }
+
+    // Валідація власника
+    if (!formData.cardName.trim().includes(' ')) {
+        newErrors.cardName = "Введіть Ім'я та Прізвище (латиницею)";
+    }
+
+    // Валідація дати (MM/YY)
+    if (!/^\d{2}\/\d{2}$/.test(formData.expiry)) {
+        newErrors.expiry = "Формат: MM/YY";
+    } else {
+        const [month, year] = formData.expiry.split('/').map(Number);
+        const now = new Date();
+        const currentYear = Number(String(now.getFullYear()).slice(-2));
+        const currentMonth = now.getMonth() + 1;
+
+        if (month < 1 || month > 12) {
+            newErrors.expiry = "Невірний місяць";
+        } else if (year < currentYear || (year === currentYear && month < currentMonth)) {
+            newErrors.expiry = "Картка прострочена";
+        }
+    }
+
+    // Валідація CVV
+    if (!/^\d{3}$/.test(formData.cvv)) {
+        newErrors.cvv = "3 цифри";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // --- ОБРОБКА ВВОДУ (МАСКИ) ---
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    // Проста маска для номера картки (лише цифри)
-    if (name === 'cardNumber' && !/^\d*$/.test(value.replace(/\s/g, ''))) return;
-    
-    setFormData(prev => ({ ...prev, [name]: value }));
+    let formattedValue = value;
+
+    if (name === 'cardNumber') {
+        // Залишаємо тільки цифри
+        const digits = value.replace(/\D/g, '');
+        // Групуємо по 4 цифри
+        formattedValue = digits.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+        if (formattedValue.length > 19) return; // Обмеження довжини (16 цифр + 3 пробіли)
+    } 
+    else if (name === 'expiry') {
+        // Формат MM/YY
+        const digits = value.replace(/\D/g, '');
+        if (digits.length >= 3) {
+            formattedValue = `${digits.slice(0, 2)}/${digits.slice(2, 4)}`;
+        } else {
+            formattedValue = digits;
+        }
+        if (formattedValue.length > 5) return;
+    }
+    else if (name === 'cvv') {
+        // Тільки 3 цифри
+        formattedValue = value.replace(/\D/g, '').slice(0, 3);
+    }
+    else if (name === 'cardName') {
+        // Тільки літери
+        formattedValue = value.replace(/[^a-zA-Z\s]/g, '').toUpperCase();
+    }
+
+    setFormData(prev => ({ ...prev, [name]: formattedValue }));
+    // Очищаємо помилку при вводі
+    if (errors[name]) {
+        setErrors(prev => ({...prev, [name]: null}));
+    }
   };
 
   const handlePay = async (e) => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+        return; // Якщо є помилки, не відправляємо
+    }
+
     setProcessing(true);
 
-    // 1. Імітація затримки банку (2 секунди)
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Імітація запиту до банку
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
     try {
-      // 2. Реальний запит на бекенд
       await api.post('/payments/', { lot_id: Number(lotId) });
       
-      // Успіх
-      alert("Оплата успішна! Транзакція підтверджена.");
-      navigate(`/lot/${lotId}`); // Повертаємось на лот
+      alert("✅ Оплата успішна! Кошти зараховано.");
+      navigate(`/lot/${lotId}`);
     } catch (err) {
       alert("Помилка оплати: " + (err.response?.data?.detail || err.message));
       setProcessing(false);
@@ -68,7 +164,7 @@ export default function PaymentPage() {
         {/* Заголовок */}
         <div style={styles.header}>
           <h2 style={{margin: 0, color: '#1f2937'}}>Secure Checkout</h2>
-          <div style={{fontSize: '2rem'}}>🔒</div>
+          <div style={{fontSize: '1.5rem'}}>🔒</div>
         </div>
 
         {/* Інфо про замовлення */}
@@ -85,56 +181,75 @@ export default function PaymentPage() {
 
         {/* Форма картки */}
         <form onSubmit={handlePay} style={styles.form}>
-          <div>
+          
+          {/* Номер картки */}
+          <div style={styles.fieldGroup}>
             <label style={styles.label}>Номер картки</label>
             <input 
               name="cardNumber"
               placeholder="0000 0000 0000 0000"
-              maxLength="19"
               value={formData.cardNumber}
               onChange={handleInputChange}
-              style={styles.input}
+              style={{
+                  ...styles.input, 
+                  borderColor: errors.cardNumber ? '#ef4444' : '#d1d5db'
+              }}
               required
             />
+            {errors.cardNumber && <span style={styles.errorText}>{errors.cardNumber}</span>}
           </div>
 
-          <div>
+          {/* Власник */}
+          <div style={styles.fieldGroup}>
             <label style={styles.label}>Власник картки</label>
             <input 
               name="cardName"
               placeholder="TARAS SHEVCHENKO"
               value={formData.cardName}
               onChange={handleInputChange}
-              style={{...styles.input, textTransform: 'uppercase'}}
+              style={{
+                  ...styles.input, 
+                  borderColor: errors.cardName ? '#ef4444' : '#d1d5db'
+              }}
               required
             />
+            {errors.cardName && <span style={styles.errorText}>{errors.cardName}</span>}
           </div>
 
           <div style={styles.row}>
+            {/* Дата */}
             <div style={{flex: 1}}>
-              <label style={styles.label}>Термін дії (MM/YY)</label>
+              <label style={styles.label}>Термін дії</label>
               <input 
                 name="expiry"
-                placeholder="12/26"
-                maxLength="5"
+                placeholder="MM/YY"
                 value={formData.expiry}
                 onChange={handleInputChange}
-                style={styles.input}
+                style={{
+                    ...styles.input, 
+                    borderColor: errors.expiry ? '#ef4444' : '#d1d5db'
+                }}
                 required
               />
+              {errors.expiry && <span style={styles.errorText}>{errors.expiry}</span>}
             </div>
+
+            {/* CVV */}
             <div style={{flex: 1}}>
               <label style={styles.label}>CVV</label>
               <input 
                 name="cvv"
                 type="password"
                 placeholder="123"
-                maxLength="3"
                 value={formData.cvv}
                 onChange={handleInputChange}
-                style={styles.input}
+                style={{
+                    ...styles.input, 
+                    borderColor: errors.cvv ? '#ef4444' : '#d1d5db'
+                }}
                 required
               />
+              {errors.cvv && <span style={styles.errorText}>{errors.cvv}</span>}
             </div>
           </div>
 
@@ -144,7 +259,8 @@ export default function PaymentPage() {
             style={{
               ...styles.payButton,
               opacity: processing ? 0.7 : 1,
-              cursor: processing ? 'not-allowed' : 'pointer'
+              cursor: processing ? 'not-allowed' : 'pointer',
+              background: processing ? '#6b7280' : '#10b981'
             }}
           >
             {processing ? (
@@ -223,6 +339,10 @@ const styles = {
     flexDirection: 'column',
     gap: '20px'
   },
+  fieldGroup: {
+    display: 'flex',
+    flexDirection: 'column'
+  },
   label: {
     display: 'block',
     marginBottom: '8px',
@@ -234,9 +354,17 @@ const styles = {
     width: '100%',
     padding: '12px',
     borderRadius: '8px',
-    border: '1px solid #d1d5db',
+    borderWidth: '1px',
+    borderStyle: 'solid',
     fontSize: '1rem',
-    boxSizing: 'border-box'
+    boxSizing: 'border-box',
+    outline: 'none',
+    transition: 'border-color 0.2s'
+  },
+  errorText: {
+    color: '#ef4444',
+    fontSize: '0.8rem',
+    marginTop: '4px'
   },
   row: {
     display: 'flex',
@@ -245,13 +373,13 @@ const styles = {
   payButton: {
     width: '100%',
     padding: '14px',
-    background: '#10b981',
     color: 'white',
     border: 'none',
     borderRadius: '8px',
     fontSize: '1.1rem',
     fontWeight: 'bold',
-    marginTop: '10px'
+    marginTop: '10px',
+    transition: 'background 0.3s'
   },
   cancelButton: {
     width: '100%',

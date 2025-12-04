@@ -5,3 +5,4 @@ asyncpg
 python-dotenv
 python-jose[cryptography]
 httpx
+python-multipart

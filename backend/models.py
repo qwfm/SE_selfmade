@@ -11,7 +11,14 @@ class User(Base):
     auth0_sub = Column(String, unique=True, nullable=False, index=True) 
     email = Column(String, nullable=False)
     username = Column(String, nullable=True)
+    
     is_admin = Column(Boolean, default=False)
+    
+    # --- БЛОКУВАННЯ ---
+    is_blocked = Column(Boolean, default=False)
+    ban_reason = Column(String, nullable=True) # Причина бану
+    ban_until = Column(DateTime(timezone=True), nullable=True) # Якщо NULL і is_blocked=True -> Назавжди
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     phone_number = Column(String, nullable=True)
     bio = Column(Text, nullable=True) 
@@ -31,17 +38,18 @@ class Lot(Base):
     min_step = Column(Numeric(10, 2), default=1.0)
     status = Column(String, default="active") # active, sold, closed
     image_url = Column(String, nullable=True)
+    
     payment_deadline = Column(DateTime(timezone=True), nullable=True)
-    payment_deadline_days = Column(Integer, nullable=False, default=0)  # Кількість днів для оплати
-    payment_deadline_hours = Column(Integer, nullable=False, default=24)  # Кількість годин для оплати
-    payment_deadline_minutes = Column(Integer, nullable=False, default=0)  # Кількість хвилин для оплати
+    payment_deadline_days = Column(Integer, nullable=False, default=0)
+    payment_deadline_hours = Column(Integer, nullable=False, default=24)
+    payment_deadline_minutes = Column(Integer, nullable=False, default=0)
     
     seller_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     seller = relationship("User", back_populates="lots")
     bids = relationship("Bid", back_populates="lot", order_by="desc(Bid.amount)", cascade="all, delete-orphan")
-    payment = relationship("Payment", back_populates="lot", uselist=False)
+    payment = relationship("Payment", back_populates="lot", uselist=False, cascade="all, delete-orphan")
 
 class Bid(Base):
     __tablename__ = "bids"
