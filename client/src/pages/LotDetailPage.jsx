@@ -91,11 +91,11 @@ export default function LotDetailPage() {
 
   // 1. Видалити існуючу (просто додаємо ID в список на видалення)
   const handleDeleteExisting = (imgId) => {
-      // Рахуємо поточну кількість (існуючі мінус видалені + нові)
+      // Рахуємо поточну кількість
       const currentCount = (lot.images?.length || 0) - imagesToDelete.length;
       const total = currentCount + newImages.length;
 
-      // 🛑 ПЕРЕВІРКА: Має залишитись хоча б одна
+      // ПЕРЕВІРКА: Має залишитись хоча б одна
       if (total <= 1) {
           alert("Неможливо видалити: у лота повинна бути мінімум одна фотографія.");
           return;
@@ -131,7 +131,7 @@ export default function LotDetailPage() {
       const currentCount = (lot.images?.length || 0) - imagesToDelete.length;
       const total = currentCount + newImages.length;
 
-      // 🛑 ПЕРЕВІРКА: Має залишитись хоча б одна
+      // ПЕРЕВІРКА: Має залишитись хоча б одна
       if (total <= 1) {
           alert("Неможливо видалити: у лота повинна бути мінімум одна фотографія.");
           return;
@@ -249,7 +249,7 @@ export default function LotDetailPage() {
   // Для View Mode
   const galleryImages = (lot.images && lot.images.length > 0) ? lot.images : [];
 
-  // Для Edit Mode: рахуємо картинки для відображення
+  // Для Edit Mode
   const existingImagesToDisplay = galleryImages.filter(img => !imagesToDelete.includes(img.id));
   const totalImagesInEditor = existingImagesToDisplay.length + newImages.length;
 
@@ -431,12 +431,9 @@ export default function LotDetailPage() {
           )}
         </div>
 
-        {/* Картка продавця */}
+        {/* Картка продавця (БЕЗ АВАТАРКИ) */}
         {lot.seller && (
           <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)', display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-              <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#e0e7ff', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.5rem' }}>
-                {lot.seller.username ? lot.seller.username[0].toUpperCase() : 'U'}
-              </div>
               <div>
                 <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '4px' }}>Продавець</div>
                 <div style={{ fontWeight: '700', color: '#1f2937', fontSize: '1.1rem' }}>{lot.seller.username || "Користувач"}</div>

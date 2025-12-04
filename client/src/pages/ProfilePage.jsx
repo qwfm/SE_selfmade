@@ -34,7 +34,7 @@ export default function ProfilePage() {
   const [banForm, setBanForm] = useState({ reason: '', is_permanent: false, duration_days: 7 });
 
   // Фільтри користувача
-  const [activeTab, setActiveTab] = useState('profile'); // 'profile', 'lots', 'bids', 'admin'
+  const [activeTab, setActiveTab] = useState('profile');
   const [lotsFilter, setLotsFilter] = useState('all');
   const [bidsFilter, setBidsFilter] = useState('all');
 
@@ -55,7 +55,6 @@ export default function ProfilePage() {
       const bidsRes = await api.get('/bids/my');
       setMyBids(bidsRes.data);
 
-      // Якщо адмін - завантажуємо адмінські дані
       if (profileRes.data.is_admin) {
           fetchAdminUsers();
       }
@@ -74,12 +73,11 @@ export default function ProfilePage() {
       } catch (e) { console.error("Admin fetch error", e); }
   }
 
-  // Завантаження правил при відкритті вкладки адміна
   useEffect(() => {
       if (activeTab === 'admin' && profile?.is_admin) {
           api.get('/settings/rules')
              .then(res => setRulesText(res.data.content))
-             .catch(e => console.error("Rules fetch error", e));
+             .catch(e => console.error(e));
       }
   }, [activeTab, profile, api]);
 
@@ -104,7 +102,7 @@ export default function ProfilePage() {
       );
   }, [adminUsers, adminSearch]);
 
-  // --- ОБРОБНИКИ КОРИСТУВАЧА ---
+  // --- ОБРОБНИКИ ---
   const handleSave = async () => {
     try {
       await api.patch('/users/me', form);
@@ -135,18 +133,15 @@ export default function ProfilePage() {
   };
 
   // --- АДМІНСЬКІ ДІЇ ---
-  
-  // 1. Правила
   const handleSaveRules = async () => {
       try {
           await api.put('/settings/rules', { content: rulesText });
           alert("Правила сайту оновлено!");
       } catch (e) {
-          alert("Помилка оновлення правил: " + (e.response?.data?.detail || e.message));
+          alert("Помилка: " + (e.response?.data?.detail || e.message));
       }
   };
 
-  // 2. Видалення лота
   const handleAdminDeleteLotClick = () => {
       if (!lotIdToDelete) return;
       setDeleteReason(''); 
@@ -155,22 +150,20 @@ export default function ProfilePage() {
 
   const confirmDeleteLot = async () => {
       if (!deleteReason.trim()) {
-          alert("Будь ласка, вкажіть причину видалення.");
+          alert("Вкажіть причину видалення.");
           return;
       }
-      
       try {
           await api.delete(`/admin/lots/${lotIdToDelete}?reason=${encodeURIComponent(deleteReason)}`);
           alert(`Лот ${lotIdToDelete} знищено, власника повідомлено.`);
           setLotIdToDelete('');
           setShowDeleteModal(false);
-          loadAll(); // Оновити списки (якщо треба)
+          loadAll();
       } catch (err) {
           alert("Помилка: " + err.response?.data?.detail);
       }
   };
 
-  // 3. Бан користувача
   const openBanModal = (userId) => {
       setBanTargetId(userId);
       setBanForm({ reason: '', is_permanent: false, duration_days: 7 });
@@ -189,7 +182,7 @@ export default function ProfilePage() {
   };
 
   const handleUnblockUser = async (userId) => {
-      if (!window.confirm("Розблокувати користувача?")) return;
+      if (!window.confirm("Розблокувати?")) return;
       try {
           await api.post(`/admin/users/${userId}/unblock`);
           alert("Користувача розблоковано.");
@@ -217,12 +210,8 @@ export default function ProfilePage() {
       {/* --- ТАБ 1: ПРОФІЛЬ --- */}
       {activeTab === 'profile' && (
       <div style={cardStyle}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '30px', borderBottom: '1px solid #eee', paddingBottom: '20px' }}>
-          <img 
-            src={user?.picture} 
-            alt="Avatar" 
-            style={{ width: '80px', height: '80px', borderRadius: '50%', border: '4px solid #e0e7ff' }} 
-          />
+        <div style={{ marginBottom: '30px', borderBottom: '1px solid #eee', paddingBottom: '20px' }}>
+          {/* АВАТАРКА ВИДАЛЕНА */}
           <div>
             <h2 style={{ margin: 0, color: '#1f2937' }}>
                 {profile.username || user?.nickname || 'Користувач'}
@@ -274,12 +263,12 @@ export default function ProfilePage() {
       </div>
       )}
 
-      {/* --- ТАБ: АДМІН ПАНЕЛЬ (Тільки для адмінів) --- */}
+      {/* --- ТАБ: АДМІН ПАНЕЛЬ --- */}
       {activeTab === 'admin' && profile.is_admin && (
-          <div style={{...cardStyle, border:'2px solid #fee2e2', boxShadow:'0 10px 15px -3px rgba(220, 38, 38, 0.1)'}}>
+          <div style={{...cardStyle, border:'2px solid #fee2e2', marginTop:'30px', boxShadow:'0 10px 15px -3px rgba(220, 38, 38, 0.1)'}}>
               <h2 style={{color:'#b91c1c', marginTop:0, marginBottom:'20px', borderBottom:'1px solid #fecaca', paddingBottom:'10px'}}>🛡️ Панель Адміністратора</h2>
               
-              {/* 1. РЕДАГУВАННЯ ПРАВИЛ (НОВЕ) */}
+              {/* 1. РЕДАГУВАННЯ ПРАВИЛ */}
               <div style={{background:'#fffbeb', padding:'20px', borderRadius:'12px', marginBottom:'30px', border:'1px solid #fcd34d'}}>
                   <h4 style={{marginTop:0, color:'#92400e'}}>📜 Редагування правил сайту</h4>
                   <p style={{fontSize:'0.85rem', color:'#b45309', marginBottom:'10px'}}>Цей текст буде відображатись на головній сторінці.</p>
@@ -476,7 +465,7 @@ export default function ProfilePage() {
           </div>
       )}
 
-      {/* --- МОДАЛКА ВИДАЛЕННЯ ЛОТУ (НОВА) --- */}
+      {/* --- МОДАЛКА ВИДАЛЕННЯ ЛОТУ --- */}
       {showDeleteModal && (
           <div style={modalOverlayStyle}>
               <div style={modalContentStyle}>
