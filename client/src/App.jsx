@@ -1,6 +1,6 @@
-import { Routes, Route, Link, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useApi } from './useApi';
 
 // Імпорт сторінок
@@ -13,106 +13,140 @@ import CompleteProfilePage from './pages/CompleteProfilePage';
 import PaymentPage from './pages/PaymentPage';
 
 function App() {
-  const { loginWithRedirect, logout, isAuthenticated, user, isLoading: authLoading } = useAuth0();
-  const location = useLocation();
+  const { loginWithRedirect, logout, isAuthenticated, user } = useAuth0();
   const api = useApi();
-
-  // Стан профілю: null = невідомо, false = не заповнений, true = ок
+  
   const [isProfileComplete, setIsProfileComplete] = useState(null);
-  // Стан для повідомлення про бан
-  const [banMessage, setBanMessage] = useState(null); 
+  
+  // Нотифікації
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const notifRef = useRef(null);
 
   useEffect(() => {
     if (isAuthenticated) {
       api.get('/users/me')
-        .then(res => {
-          // Якщо немає телефону - профіль не заповнений
-          if (!res.data.phone_number) {
-             setIsProfileComplete(false);
-          } else {
-             setIsProfileComplete(true);
-          }
-        })
-        .catch(err => {
-          // ПЕРЕВІРКА НА БАН (403)
-          if (err.response && err.response.status === 403) {
-             setBanMessage(err.response.data.detail); // Зберігаємо повідомлення
-          } else {
-             console.error("Auth check error:", err);
-             // Якщо інша помилка (наприклад мережа), пускаємо, щоб не блокувати навічно
-             setIsProfileComplete(true); 
-          }
-        });
-    } else {
-      // Для гостей перевірка не потрібна
-      setIsProfileComplete(true);
+        .then(res => setIsProfileComplete(!!res.data.phone_number))
+        .catch(() => {});
+
+      fetchNotifications();
     }
   }, [isAuthenticated, api]);
 
-  // 1. СПІННЕР ЗАВАНТАЖЕННЯ
-  // Показуємо, поки Auth0 думає АБО поки ми не перевірили профіль/бан
-  if (authLoading || (isAuthenticated && isProfileComplete === null && !banMessage)) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', color: '#6366f1' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div className="spinner"></div>
-          Завантаження...
-        </div>
-        <style>{`.spinner { width: 50px; height: 50px; border: 4px solid #e5e7eb; border-top: 4px solid #6366f1; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; } @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
-  }
+  const fetchNotifications = async () => {
+      try {
+          const res = await api.get('/users/notifications');
+          setNotifications(res.data);
+      } catch (e) { console.error(e); }
+  };
 
-  // 2. ЕКРАН БЛОКУВАННЯ (БАН)
-  if (banMessage) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#fef2f2', padding: '20px', fontFamily: 'sans-serif' }}>
-        <div style={{ background: 'white', padding: '40px', borderRadius: '16px', boxShadow: '0 10px 25px rgba(220,38,38,0.1)', maxWidth: '500px', textAlign: 'center', border: '2px solid #fecaca' }}>
-          <div style={{ fontSize: '4rem', marginBottom: '10px' }}>⛔</div>
-          <h2 style={{ color: '#991b1b', marginTop: 0, marginBottom: '10px' }}>Доступ заборонено</h2>
-          <p style={{ fontSize: '1.1rem', color: '#374151', margin: '20px 0', lineHeight: '1.6', background: '#fff1f2', padding: '15px', borderRadius: '8px' }}>
-            {banMessage}
-          </p>
-          <button 
-            onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
-            style={{ ...logoutBtnStyle, background: '#ef4444', color: 'white', padding: '12px 24px', fontSize: '1rem', width: '100%' }}
-          >
-            Вийти з акаунту
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // --- ЛОГІКА ВІДКРИТТЯ ТА "ПРОЧИТАННЯ" ---
+  const handleToggleNotifications = async () => {
+      if (!showNotifDropdown) {
+          // Якщо ми ВІДКРИВАЄМО список:
+          setShowNotifDropdown(true);
+          
+          // 1. Якщо є непрочитані - відправляємо запит на бекенд
+          const hasUnread = notifications.some(n => !n.is_read);
+          if (hasUnread) {
+              try {
+                  await api.post('/users/notifications/read');
+                  // 2. Оновлюємо локальний стан (прибираємо червоний кружечок миттєво)
+                  setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+              } catch (e) { console.error("Error marking read", e); }
+          }
+      } else {
+          // Закриваємо
+          setShowNotifDropdown(false);
+      }
+  };
 
-  // 3. ЕКРАН ЗАВЕРШЕННЯ РЕЄСТРАЦІЇ
+  useEffect(() => {
+      function handleClickOutside(event) {
+          if (notifRef.current && !notifRef.current.contains(event.target)) {
+              setShowNotifDropdown(false);
+          }
+      }
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [notifRef]);
+
   if (isAuthenticated && isProfileComplete === false) {
     return <CompleteProfilePage onComplete={() => setIsProfileComplete(true)} />;
   }
 
-  const isActive = (path) => location.pathname === path;
+  // Рахуємо тільки ті, де is_read === false
+  const unreadCount = notifications.filter(n => !n.is_read).length;
 
   return (
-    <div style={{ minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div style={{ fontFamily: "'Inter', sans-serif", color: '#111827' }}>
       
-      {/* --- НАВІГАЦІЯ --- */}
-      <nav style={{ background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', position: 'sticky', top: 0, zIndex: 100 }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 2rem', height: '70px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <nav style={{ background: 'white', borderBottom: '1px solid #e5e7eb', padding: '0 20px', position: 'sticky', top: 0, zIndex: 100 }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto', height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: '3rem' }}>
-            <Link to="/" style={{ textDecoration: 'none', fontSize: '1.5rem', fontWeight: '800', color: '#4f46e5' }}>Bid&Buy</Link>
-            <div style={{ display: 'flex', gap: '1.5rem' }}>
-              <Link to="/lots" style={isActive('/lots') ? activeLinkStyle : linkStyle}>Всі лоти</Link>
-              {isAuthenticated && <Link to="/create" style={isActive('/create') ? activeLinkStyle : linkStyle}>Створити лот</Link>}
-            </div>
-          </div>
+          <Link to="/" style={{ textDecoration: 'none', fontSize: '1.5rem', fontWeight: '900', color: '#4f46e5' }}>
+            Bid&Buy ⚡
+          </Link>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <Link to="/lots" style={linkStyle}>Всі лоти</Link>
+            
             {isAuthenticated ? (
               <>
-                <Link to="/profile" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', color: '#374151', fontWeight: '500' }}>
-                  <img src={user.picture} alt={user.name} style={{ width: '32px', height: '32px', borderRadius: '50%', border: '2px solid #e5e7eb' }} />
-                  <span>{user.nickname}</span>
-                </Link>
+                <Link to="/create" style={linkStyle}>Створити лот</Link>
+                
+                {/* ДЗВІНОЧОК */}
+                <div style={{ position: 'relative' }} ref={notifRef}>
+                    <button 
+                        onClick={handleToggleNotifications}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', position: 'relative', padding: '5px' }}
+                    >
+                        <span style={{ fontSize: '1.4rem' }}>🔔</span>
+                        {unreadCount > 0 && (
+                            <span style={{
+                                position: 'absolute', top: '0', right: '0',
+                                background: '#ef4444', color: 'white',
+                                fontSize: '0.7rem', fontWeight: 'bold',
+                                borderRadius: '50%', width: '18px', height: '18px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}>
+                                {unreadCount}
+                            </span>
+                        )}
+                    </button>
+
+                    {showNotifDropdown && (
+                        <div style={{
+                            position: 'absolute', right: 0, top: '40px',
+                            width: '320px', background: 'white',
+                            boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                            borderRadius: '12px', border: '1px solid #e5e7eb',
+                            overflow: 'hidden', zIndex: 200
+                        }}>
+                            <div style={{ padding: '12px', borderBottom: '1px solid #f3f4f6', fontWeight: 'bold', background: '#f9fafb' }}>
+                                Сповіщення
+                            </div>
+                            <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                                {notifications.length === 0 ? (
+                                    <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280', fontSize: '0.9rem' }}>
+                                        Немає повідомлень
+                                    </div>
+                                ) : (
+                                    notifications.map(note => (
+                                        <div key={note.id} style={{ padding: '12px', borderBottom: '1px solid #f3f4f6', fontSize: '0.9rem', background: note.is_read ? 'white' : '#eff6ff' }}>
+                                            <p style={{ margin: '0 0 5px 0', lineHeight: '1.4' }}>{note.message}</p>
+                                            <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+                                                {new Date(note.created_at).toLocaleString()}
+                                            </span>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <Link to="/profile" style={linkStyle}>Профіль</Link>
                 <button onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })} style={logoutBtnStyle}>Вийти</button>
               </>
             ) : (
@@ -122,7 +156,6 @@ function App() {
         </div>
       </nav>
 
-      {/* --- КОНТЕНТ --- */}
       <div style={{ paddingBottom: '40px' }}>
         <Routes>
           <Route path="/" element={<MainPage />} />
@@ -133,16 +166,13 @@ function App() {
           <Route path="/payment/:lotId" element={<PaymentPage />} />
         </Routes>
       </div>
-
       <style>{`body { margin: 0; background-color: #f9fafb; }`}</style>
     </div>
   );
 }
 
-// Стилі
-const linkStyle = { textDecoration: 'none', color: '#6b7280', fontWeight: '500', fontSize: '1rem', transition: 'color 0.2s' };
-const activeLinkStyle = { ...linkStyle, color: '#4f46e5', fontWeight: '700' };
+const linkStyle = { textDecoration: 'none', color: '#6b7280', fontWeight: '500', fontSize: '1rem', transition: 'color 0.2s', cursor: 'pointer' };
 const logoutBtnStyle = { background: '#fee2e2', color: '#991b1b', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.9rem' };
-const loginBtnStyle = { background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', color: 'white', border: 'none', padding: '0.6rem 1.5rem', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', boxShadow: '0 4px 6px rgba(99, 102, 241, 0.3)' };
+const loginBtnStyle = { background: '#4f46e5', color: 'white', border: 'none', padding: '0.5rem 1.5rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '1rem' };
 
 export default App;

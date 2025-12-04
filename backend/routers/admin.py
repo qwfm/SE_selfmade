@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List
 
 from database import get_db
-from models import User, Lot, Bid
+from models import User, Lot, Bid, Notification
 from schemas import UserOut, BlockUserRequest
 from dependencies import get_current_user_db
 
@@ -149,11 +149,13 @@ async def unblock_user(
 @router.delete("/lots/{lot_id}")
 async def admin_delete_lot(
     lot_id: int,
+    reason: str = "Порушення правил платформи", # <--- Причина за замовчуванням
     current_user: User = Depends(get_current_user_db),
     db: AsyncSession = Depends(get_db)
 ):
     check_admin(current_user)
     
+    # 1. Знаходимо лот
     query = select(Lot).where(Lot.id == lot_id)
     result = await db.execute(query)
     lot = result.scalar_one_or_none()
@@ -161,7 +163,19 @@ async def admin_delete_lot(
     if not lot:
         raise HTTPException(status_code=404, detail="Lot not found")
 
+    seller_id = lot.seller_id
+    lot_title = lot.title
+
+    # 3. Видаляємо лот з БД
     await db.delete(lot)
+    
+    # 4. Створюємо повідомлення для продавця
+    notification = Notification(
+        user_id=seller_id,
+        message=f"Ваш лот '{lot_title}' було видалено адміністратором. Причина: {reason}"
+    )
+    db.add(notification)
+
     await db.commit()
     
-    return {"message": f"Lot #{lot_id} deleted by admin"}
+    return {"message": f"Lot #{lot_id} deleted. Notification sent to seller."}

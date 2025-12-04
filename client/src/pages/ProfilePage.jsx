@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 
 export default function ProfilePage() {
   const api = useApi();
-  const { user } = useAuth0(); 
+  const { user, logout } = useAuth0(); 
   
   const [profile, setProfile] = useState(null);
   const [myLots, setMyLots] = useState([]);
@@ -19,7 +19,12 @@ export default function ProfilePage() {
   // --- АДМІНСЬКІ СТАНИ ---
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminSearch, setAdminSearch] = useState('');
+  
+  // Логіка видалення лоту
   const [lotIdToDelete, setLotIdToDelete] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false); // <--- НОВЕ: Модалка видалення
+  const [deleteReason, setDeleteReason] = useState('');          // <--- НОВЕ: Причина видалення
+
   // Модальне вікно бану
   const [showBanModal, setShowBanModal] = useState(false);
   const [banTargetId, setBanTargetId] = useState(null);
@@ -117,13 +122,27 @@ export default function ProfilePage() {
   };
 
   // --- АДМІНСЬКІ ДІЇ ---
-  const handleAdminDeleteLot = async () => {
+  
+  // 1. Натискання кнопки "ЗНИЩИТИ ЛОТ" -> Відкриває модалку
+  const handleAdminDeleteLotClick = () => {
       if (!lotIdToDelete) return;
-      if (!window.confirm(`АДМІН: Ви точно хочете видалити лот ID ${lotIdToDelete}? Це незворотньо.`)) return;
+      setDeleteReason(''); // Очищаємо поле причини
+      setShowDeleteModal(true);
+  };
+
+  // 2. Підтвердження в модалці -> API запит з причиною
+  const confirmDeleteLot = async () => {
+      if (!deleteReason.trim()) {
+          alert("Будь ласка, вкажіть причину видалення.");
+          return;
+      }
+      
       try {
-          await api.delete(`/admin/lots/${lotIdToDelete}`);
-          alert(`Лот ${lotIdToDelete} знищено.`);
+          // Передаємо reason як query parameter
+          await api.delete(`/admin/lots/${lotIdToDelete}?reason=${encodeURIComponent(deleteReason)}`);
+          alert(`Лот ${lotIdToDelete} знищено, власника повідомлено.`);
           setLotIdToDelete('');
+          setShowDeleteModal(false);
           loadAll();
       } catch (err) {
           alert("Помилка: " + err.response?.data?.detail);
@@ -243,7 +262,7 @@ export default function ProfilePage() {
                         onChange={e => setLotIdToDelete(e.target.value)}
                         style={inputStyle}
                       />
-                      <button onClick={handleAdminDeleteLot} style={{...editBtnStyle, background:'#ef4444', color:'white', width:'auto', whiteSpace:'nowrap'}}>ЗНИЩИТИ ЛОТ</button>
+                      <button onClick={handleAdminDeleteLotClick} style={{...editBtnStyle, background:'#ef4444', color:'white', width:'auto', whiteSpace:'nowrap'}}>ЗНИЩИТИ ЛОТ</button>
                   </div>
               </div>
 
@@ -348,6 +367,33 @@ export default function ProfilePage() {
           </div>
       )}
 
+      {/* --- НОВА МОДАЛКА ВИДАЛЕННЯ ЛОТУ --- */}
+      {showDeleteModal && (
+          <div style={modalOverlayStyle}>
+              <div style={modalContentStyle}>
+                  <h3 style={{marginTop:0, color:'#b91c1c'}}>🔥 Видалення лота #{lotIdToDelete}</h3>
+                  <p style={{fontSize:'0.9rem', color:'#666'}}>
+                      Лот буде видалено безповоротно. Власнику буде надіслано сповіщення.
+                  </p>
+                  
+                  <div style={{marginBottom:'15px'}}>
+                      <label style={labelStyle}>Причина видалення:</label>
+                      <textarea 
+                          placeholder="Наприклад: Продаж заборонених товарів..." 
+                          value={deleteReason} 
+                          onChange={e => setDeleteReason(e.target.value)} 
+                          style={{...inputStyle, height:'80px', resize:'vertical'}} 
+                      />
+                  </div>
+                  
+                  <div style={{display:'flex', gap:'10px', justifyContent:'flex-end', marginTop:'20px'}}>
+                      <button onClick={confirmDeleteLot} style={{...editBtnStyle, background:'#ef4444', color:'white'}}>Підтвердити</button>
+                      <button onClick={()=>setShowDeleteModal(false)} style={{...editBtnStyle, background:'#f3f4f6', color:'#374151'}}>Скасувати</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px', marginTop:'30px' }}>
         
         {/* --- БЛОК 2: МОЇ ЛОТИ --- */}
@@ -374,32 +420,32 @@ export default function ProfilePage() {
              </p>
           ) : (
              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                {filteredLots.map(lot => (
-                  <div key={lot.id} style={cardItemStyle}>
-                    <div style={{ flex: 1 }}>
+               {filteredLots.map(lot => (
+                 <div key={lot.id} style={cardItemStyle}>
+                   <div style={{ flex: 1 }}>
                        <div style={{ fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '5px' }}>{lot.title}</div>
                        <div style={{ fontSize: '0.9rem', color: '#6b7280' }}>Ціна: <span style={{color: '#4f46e5', fontWeight: 'bold'}}>${lot.current_price}</span></div>
                        <div style={{ marginTop: '8px' }}>
-                          <span style={getStatusBadgeStyle(lot.status)}>
-                            {getStatusLabel(lot.status)}
-                          </span>
+                         <span style={getStatusBadgeStyle(lot.status)}>
+                           {getStatusLabel(lot.status)}
+                         </span>
                        </div>
-                    </div>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'flex-end' }}>
-                        <Link to={`/lot/${lot.id}`} style={linkBtnStyle}>Перейти</Link>
-                        {(lot.status === 'active' || lot.status === 'closed_unsold') && (
-                            <button 
-                                onClick={() => handleDeleteLot(lot.id)}
-                                style={deleteBtnStyle}
-                                title="Видалити лот"
-                            >
-                                Видалити
-                            </button>
-                        )}
-                    </div>
-                  </div>
-                ))}
+                   </div>
+                   
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'flex-end' }}>
+                       <Link to={`/lot/${lot.id}`} style={linkBtnStyle}>Перейти</Link>
+                       {(lot.status === 'active' || lot.status === 'closed_unsold') && (
+                           <button 
+                               onClick={() => handleDeleteLot(lot.id)}
+                               style={deleteBtnStyle}
+                               title="Видалити лот"
+                           >
+                               Видалити
+                           </button>
+                       )}
+                   </div>
+                 </div>
+               ))}
              </div>
           )}
         </div>
@@ -427,9 +473,9 @@ export default function ProfilePage() {
              </p>
           ) : (
              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                {filteredBids.map(bid => (
-                  <div key={bid.id} style={cardItemStyle}>
-                    <div style={{ flex: 1 }}>
+               {filteredBids.map(bid => (
+                 <div key={bid.id} style={cardItemStyle}>
+                   <div style={{ flex: 1 }}>
                        <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
                          {bid.lot ? bid.lot.title : <span style={{color:'red'}}>Лот видалено</span>}
                        </div>
@@ -437,7 +483,7 @@ export default function ProfilePage() {
                        <div style={{ color: '#10b981', fontWeight: 'bold' }}>Ваша ставка: ${bid.amount}</div>
                        
                        <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '5px' }}>
-                          {new Date(bid.timestamp).toLocaleDateString()} {new Date(bid.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                         {new Date(bid.timestamp).toLocaleDateString()} {new Date(bid.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                        </div>
                        
                        {!bid.is_active && <span style={{fontSize: '0.8rem', color: '#ef4444', fontWeight: 'bold'}}>✖ Ставка неактивна (Термін оплати минув)</span>}
@@ -450,23 +496,23 @@ export default function ProfilePage() {
                                </span>
                            </div>
                        )}
-                    </div>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'flex-end' }}>
-                        {bid.lot && <Link to={`/lot/${bid.lot_id}`} style={linkBtnStyle}>Перейти</Link>}
-                        
-                        {bid.is_active && bid.lot && bid.lot.status === 'active' && (
-                          <button 
-                            onClick={() => handleCancelBid(bid.id)}
-                            style={deleteBtnStyle}
-                            title="Скасувати ставку"
-                          >
-                            Скасувати
-                          </button>
-                        )}
-                    </div>
-                  </div>
-                ))}
+                   </div>
+                   
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'flex-end' }}>
+                       {bid.lot && <Link to={`/lot/${bid.lot_id}`} style={linkBtnStyle}>Перейти</Link>}
+                       
+                       {bid.is_active && bid.lot && bid.lot.status === 'active' && (
+                         <button 
+                           onClick={() => handleCancelBid(bid.id)}
+                           style={deleteBtnStyle}
+                           title="Скасувати ставку"
+                         >
+                           Скасувати
+                         </button>
+                       )}
+                   </div>
+                 </div>
+               ))}
              </div>
           )}
         </div>
