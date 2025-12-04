@@ -170,38 +170,71 @@ async def close_lot(
     
     return {"message": message, "status": lot.status}
 
-# 6. Видалити лот
-@router.delete("/{lot_id}")
-async def delete_lot(
+@router.post("/{lot_id}/close")
+async def close_lot(
     lot_id: int,
     current_user: User = Depends(get_current_user_db),
     db: AsyncSession = Depends(get_db)
 ):
-    # Тут теж додаємо unique(), про всяк випадок, хоча delete працює з об'єктом
-    query = select(Lot).options(joinedload(Lot.images)).where(Lot.id == lot_id)
+    query = select(Lot).where(Lot.id == lot_id)
     result = await db.execute(query)
-    lot = result.unique().scalar_one_or_none()
+    lot = result.scalar_one_or_none()
 
     if not lot:
         raise HTTPException(status_code=404, detail="Lot not found")
 
     if lot.seller_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this lot")
+        raise HTTPException(status_code=403, detail="Not authorized to close this lot")
 
-    if lot.images:
-        for img in lot.images:
-            if "uploads/" in img.image_url:
-                try:
-                    filename = img.image_url.split("/")[-1]
-                    if os.path.exists(f"uploads/{filename}"):
-                        os.remove(f"uploads/{filename}")
-                except Exception as e:
-                    print(f"Error deleting file: {e}")
+    if lot.status != "active":
+        raise HTTPException(status_code=400, detail="Auction is already closed")
 
-    await db.delete(lot)
+    bid_query = select(Bid).where(Bid.lot_id == lot.id, Bid.is_active == True).order_by(Bid.amount.desc()).limit(1)
+    bid_result = await db.execute(bid_query)
+    highest_bid = bid_result.scalar_one_or_none()
+
+    if not highest_bid:
+        lot.status = "closed_unsold"
+        lot.closed_at = datetime.now(timezone.utc)
+        message = "Auction closed without bids. Lot will be deleted in 24 hours."
+    else:
+        lot.status = "pending_payment"
+        now = datetime.now(timezone.utc)
+        lot.payment_deadline = now + timedelta(
+            days=lot.payment_deadline_days,
+            hours=lot.payment_deadline_hours,
+            minutes=lot.payment_deadline_minutes
+        )
+        message = "Auction closed. Winner selected. Waiting for payment."
+
     await db.commit()
     
-    return {"message": "Lot deleted"}
+    return {"message": message, "status": lot.status}
+
+@router.post("/{lot_id}/restore")
+async def restore_lot(
+    lot_id: int,
+    current_user: User = Depends(get_current_user_db),
+    db: AsyncSession = Depends(get_db)
+):
+    query = select(Lot).where(Lot.id == lot_id)
+    result = await db.execute(query)
+    lot = result.scalar_one_or_none()
+
+    if not lot:
+        raise HTTPException(status_code=404, detail="Lot not found")
+
+    if lot.seller_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    if lot.status != "closed_unsold":
+        raise HTTPException(status_code=400, detail="Can only restore unsold closed lots")
+
+    lot.status = "active"
+    lot.closed_at = None 
+    
+    await db.commit()
+    return {"message": "Lot restored to active status"}
 
 @router.patch("/{lot_id}")
 async def update_lot(
@@ -210,13 +243,11 @@ async def update_lot(
     description: str = Form(None),
     start_price: float = Form(None),
     min_step: float = Form(None),
-    # Нові параметри для картинок
     new_images: List[UploadFile] = File(default=None),
-    delete_image_ids: List[int] = Form(default=None), # Список ID для видалення
+    delete_image_ids: List[int] = Form(default=None), 
     current_user: User = Depends(get_current_user_db),
     db: AsyncSession = Depends(get_db)
 ):
-    # 1. Знаходимо лот з картинками
     query = select(Lot).options(joinedload(Lot.images)).where(Lot.id == lot_id)
     result = await db.execute(query)
     lot = result.unique().scalar_one_or_none()
@@ -224,7 +255,6 @@ async def update_lot(
     if not lot:
         raise HTTPException(status_code=404, detail="Lot not found")
 
-    # 2. Перевірка прав і ставок
     if lot.seller_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
 
@@ -233,7 +263,6 @@ async def update_lot(
     if len(bids_res.scalars().all()) > 0:
         raise HTTPException(status_code=400, detail="Cannot edit lot after bids have been placed")
 
-    # 3. Валідація ліміту картинок (5 штук)
     current_images_count = len(lot.images)
     delete_count = len(delete_image_ids) if delete_image_ids else 0
     new_count = len([img for img in new_images if img.filename]) if new_images else 0
@@ -243,7 +272,6 @@ async def update_lot(
     if final_count > 5:
         raise HTTPException(status_code=400, detail=f"Total images cannot exceed 5. Resulting count: {final_count}")
 
-    # 4. Оновлення текстових полів
     if title: lot.title = title
     if description: lot.description = description
     if min_step: lot.min_step = min_step
@@ -251,13 +279,10 @@ async def update_lot(
         lot.start_price = start_price
         lot.current_price = start_price
 
-    # 5. ВИДАЛЕННЯ КАРТИНОК
     if delete_image_ids:
-        # Фільтруємо картинки, які належать цьому лоту і є в списку на видалення
         images_to_delete = [img for img in lot.images if img.id in delete_image_ids]
         
         for img in images_to_delete:
-            # Видаляємо файл з диску
             if "uploads/" in img.image_url:
                 try:
                     filename = img.image_url.split("/")[-1]
@@ -266,14 +291,11 @@ async def update_lot(
                 except Exception as e:
                     print(f"Error deleting file: {e}")
             
-            # Видаляємо з БД
             await db.delete(img)
             
-            # Якщо ми видалили обкладинку (image_url в Lot), треба очистити це поле
             if lot.image_url == img.image_url:
                 lot.image_url = None
 
-    # 6. ДОДАВАННЯ НОВИХ КАРТИНОК
     if new_images:
         for img in new_images:
             if img.filename:
@@ -289,16 +311,12 @@ async def update_lot(
                 new_image_obj = LotImage(image_url=full_url, lot_id=lot.id)
                 db.add(new_image_obj)
                 
-                # Якщо обкладинки немає (або ми її видалили), ставимо першу нову як обкладинку
                 if not lot.image_url:
                     lot.image_url = full_url
 
     await db.commit()
     
-    # Оновлюємо обкладинку, якщо список змінився, а image_url пустий
-    # (Беремо першу з тих, що залишились)
     await db.refresh(lot)
-    # Re-fetch images to be sure
     lot_reloaded = await db.execute(select(Lot).options(joinedload(Lot.images)).where(Lot.id == lot_id))
     lot = lot_reloaded.unique().scalar_one()
     

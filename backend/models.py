@@ -23,7 +23,6 @@ class User(Base):
     bids = relationship("Bid", back_populates="bidder") 
     payments = relationship("Payment", back_populates="payer")
     
-    # ДОДАНО: Зв'язок зі сповіщеннями
     notifications = relationship("Notification", back_populates="recipient", cascade="all, delete-orphan")
 
 class Notification(Base):
@@ -37,7 +36,7 @@ class Notification(Base):
 
     recipient = relationship("User", back_populates="notifications")
 
-# ... (Lot, LotImage, Bid, Payment залишаються без змін)
+# that is a....lot of fields, like REALLY lot, but i don't have time to bother with it
 class Lot(Base):
     __tablename__ = "lots"
     id = Column(Integer, primary_key=True, index=True)
@@ -54,6 +53,7 @@ class Lot(Base):
     payment_deadline = Column(DateTime(timezone=True), nullable=True)
     seller_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    closed_at = Column(DateTime(timezone=True), nullable=True)
     
     seller = relationship("User", back_populates="lots")
     images = relationship("LotImage", back_populates="lot", cascade="all, delete-orphan")
