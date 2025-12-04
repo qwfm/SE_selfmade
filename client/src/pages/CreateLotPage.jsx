@@ -1,5 +1,4 @@
-// src/pages/CreateLotPage.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApi } from '../useApi';
 import { useNavigate } from 'react-router-dom';
 
@@ -13,33 +12,68 @@ export default function CreateLotPage() {
     description: '', 
     start_price: '', 
     min_step: 10, 
-    // Тільки налаштування дедлайну ОПЛАТИ
     payment_deadline_days: 0, 
     payment_deadline_hours: 24, 
     payment_deadline_minutes: 0, 
   });
   
-  // Стейт для списку файлів
+  // Стейт для списку файлів та їх прев'ю
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [previewUrls, setPreviewUrls] = useState([]);
 
-  const handleFileChange = (e) => {
-    const files = Array.from(e.target.files);
+  // Очищення пам'яті від URL при розмонтуванні компонента
+  useEffect(() => {
+    return () => {
+        previewUrls.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [previewUrls]);
+
+  // --- НОВА ФУНКЦІЯ: Додавання фото (APPEND) ---
+  const handleAddPhoto = (e) => {
+    const newFiles = Array.from(e.target.files);
+    if (newFiles.length === 0) return;
     
-    if (files.length > 5) {
-      alert("Максимум 5 фотографій!");
+    // Перевірка ліміту
+    if (selectedFiles.length + newFiles.length > 5) {
+      alert(`Максимум 5 фотографій! Ви вже додали ${selectedFiles.length}, намагаєтесь додати ще ${newFiles.length}.`);
+      // Скидаємо інпут, щоб можна було вибрати заново
+      e.target.value = '';
       return;
     }
 
-    setSelectedFiles(files);
+    // Створюємо прев'ю для нових файлів
+    const newUrls = newFiles.map(file => URL.createObjectURL(file));
 
-    // Генеруємо прев'ю
-    const urls = files.map(file => URL.createObjectURL(file));
-    setPreviewUrls(urls);
+    // Додаємо нові файли до старих (використовуємо spread operator ...)
+    setSelectedFiles(prevFiles => [...prevFiles, ...newFiles]);
+    setPreviewUrls(prevUrls => [...prevUrls, ...newUrls]);
+
+    // Скидаємо значення інпуту, щоб якщо користувач вибере той самий файл знову, подія onChange спрацювала
+    e.target.value = '';
+  };
+
+  // --- НОВА ФУНКЦІЯ: Видалення конкретного фото ---
+  const removePhoto = (indexToRemove) => {
+    // Звільняємо пам'ять, яку займало прев'ю
+    URL.revokeObjectURL(previewUrls[indexToRemove]);
+
+    // Фільтруємо масиви, залишаючи тільки ті елементи, індекс яких не збігається з тим, що видаляємо
+    setSelectedFiles(prevFiles => 
+        prevFiles.filter((_, index) => index !== indexToRemove)
+    );
+    setPreviewUrls(prevUrls => 
+        prevUrls.filter((_, index) => index !== indexToRemove)
+    );
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (selectedFiles.length === 0) {
+        alert("Будь ласка, додайте хоча б одне фото.");
+        return;
+    }
+
     setLoading(true);
     
     try {
@@ -54,11 +88,9 @@ export default function CreateLotPage() {
       formData.append('payment_deadline_minutes', form.payment_deadline_minutes);
 
       // Додаємо кожне фото окремо
-      if (selectedFiles.length > 0) {
-        selectedFiles.forEach((file) => {
-            formData.append('images', file);
-        });
-      }
+      selectedFiles.forEach((file) => {
+          formData.append('images', file);
+      });
 
       await api.post('/lots/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -67,7 +99,8 @@ export default function CreateLotPage() {
       navigate('/lots'); // Повертаємось до списку
     } catch (err) {
       console.error(err);
-      alert('Помилка створення лота. Перевірте дані.');
+      const msg = err.response?.data?.detail || 'Помилка створення лота.';
+      alert(msg);
     } finally {
       setLoading(false);
     }
@@ -107,7 +140,7 @@ export default function CreateLotPage() {
             />
           </div>
 
-          {/* Ціна та Крок (в один ряд) */}
+          {/* Ціна та Крок */}
           <div style={{ display: 'flex', gap: '20px' }}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Стартова ціна ($)</label>
@@ -161,30 +194,86 @@ export default function CreateLotPage() {
 
           <hr style={{ border: '0', borderTop: '1px solid #e5e7eb', margin: '10px 0' }} />
 
-          {/* Фотографії (Множинний вибір) */}
+          {/* --- НОВИЙ БЛОК ЗАВАНТАЖЕННЯ ФОТО --- */}
           <div>
-            <label style={labelStyle}>Фотографії товару (Макс. 5)</label>
-            <div style={{ border: '2px dashed #d1d5db', borderRadius: '12px', padding: '24px', textAlign: 'center', background: '#f9fafb', cursor: 'pointer', transition: 'border 0.2s' }}>
-              <input 
-                type="file" 
-                accept="image/*" 
-                multiple 
-                onChange={handleFileChange}
-                style={{ width: '100%', marginBottom: '10px' }}
-              />
-              <span style={{ fontSize: '0.9rem', color: '#6b7280' }}>
-                 Оберіть до 5 фотографій
-              </span>
-
-              {/* Прев'ю сітка */}
-              {previewUrls.length > 0 && (
-                <div style={{ display: 'flex', gap: '10px', marginTop: '15px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                    {previewUrls.map((url, idx) => (
-                        <img key={idx} src={url} alt={`Preview ${idx}`} style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }} />
-                    ))}
+            <label style={labelStyle}>
+                Фотографії товару ({selectedFiles.length}/5)
+            </label>
+            
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', marginTop: '10px' }}>
+              
+              {/* 1. Відображення вже доданих фото */}
+              {previewUrls.map((url, idx) => (
+                <div key={url} style={{ position: 'relative', width: '100px', height: '100px' }}>
+                    <img 
+                        src={url} 
+                        alt={`Preview ${idx}`} 
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '8px', border: '1px solid #d1d5db' }} 
+                    />
+                    {/* Кнопка видалення (хрестик) */}
+                    <button
+                        type="button"
+                        onClick={() => removePhoto(idx)}
+                        style={{
+                            position: 'absolute',
+                            top: '-8px',
+                            right: '-8px',
+                            background: '#ef4444',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: '24px',
+                            height: '24px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '14px',
+                            fontWeight: 'bold',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        }}
+                    >
+                        ✕
+                    </button>
                 </div>
+              ))}
+
+              {/* 2. Кнопка "+ Додати фото" (Показуємо, якщо менше 5 фото) */}
+              {selectedFiles.length < 5 && (
+                  <label style={{
+                      width: '100px',
+                      height: '100px',
+                      borderRadius: '8px',
+                      border: '2px dashed #6366f1',
+                      background: '#e0e7ff',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      color: '#4f46e5',
+                      transition: 'all 0.2s'
+                  }}>
+                      <span style={{ fontSize: '24px', fontWeight: 'bold' }}>+</span>
+                      <span style={{ fontSize: '12px', marginTop: '4px' }}>Додати</span>
+                      {/* Прихований інпут, який спрацьовує при кліку на лейбл */}
+                      <input 
+                          type="file" 
+                          accept="image/*" 
+                          multiple // Дозволяємо вибрати кілька за раз, якщо користувач хоче
+                          onChange={handleAddPhoto}
+                          style={{ display: 'none' }}
+                      />
+                  </label>
               )}
             </div>
+            
+            {selectedFiles.length === 0 && (
+                 <p style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: '10px' }}>
+                    Додайте хоча б одну фотографію, щоб створити лот.
+                 </p>
+            )}
+
           </div>
 
           {/* Кнопки */}
@@ -192,7 +281,7 @@ export default function CreateLotPage() {
             <button type="button" onClick={() => navigate('/')} style={{ flex: 1, padding: '0.875rem 1.5rem', background: '#f3f4f6', color: '#374151', fontWeight: '600', fontSize: '1rem', borderRadius: '8px', border: 'none', cursor: 'pointer' }}>
               Скасувати
             </button>
-            <button type="submit" disabled={loading} style={{ flex: 2, padding: '0.875rem 1.5rem', background: loading ? '#9ca3af' : 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', color: 'white', fontWeight: '600', fontSize: '1rem', cursor: loading ? 'not-allowed' : 'pointer', borderRadius: '8px', border: 'none' }}>
+            <button type="submit" disabled={loading || selectedFiles.length === 0} style={{ flex: 2, padding: '0.875rem 1.5rem', background: (loading || selectedFiles.length === 0) ? '#9ca3af' : 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', color: 'white', fontWeight: '600', fontSize: '1rem', cursor: (loading || selectedFiles.length === 0) ? 'not-allowed' : 'pointer', borderRadius: '8px', border: 'none' }}>
               {loading ? 'Створення...' : 'Створити лот'}
             </button>
           </div>
