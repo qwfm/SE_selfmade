@@ -87,3 +87,8 @@ class Payment(Base):
     lot_id = Column(Integer, ForeignKey("lots.id"))
     payer = relationship("User", back_populates="payments")
     lot = relationship("Lot", back_populates="payment")
+    
+class SiteSetting(Base):
+    __tablename__ = "site_settings"
+    key = Column(String, primary_key=True)
+    value = Column(Text, nullable=False)

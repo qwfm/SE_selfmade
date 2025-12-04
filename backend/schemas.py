@@ -130,3 +130,9 @@ class NotificationOut(BaseModel):
 
     class Config:
         from_attributes = True
+        
+class RulesUpdate(BaseModel):
+    content: str
+
+class RulesOut(BaseModel):
+    content: str

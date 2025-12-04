@@ -7,30 +7,36 @@ export default function MainPage() {
   const api = useApi();
   const { isAuthenticated, loginWithRedirect } = useAuth0();
   const [recentLots, setRecentLots] = useState([]);
+  const [rules, setRules] = useState(''); // Стан для правил з БД
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchLots = async () => {
+    const fetchData = async () => {
       try {
+        setLoading(true);
+
+        // 1. Завантаження лотів
         const res = await api.get('/lots/');
-        
-        // 1. Фільтруємо: залишаємо тільки АКТИВНІ
         const activeLots = res.data.filter(lot => lot.status === 'active');
-        
-        // 2. Сортуємо: найновіші (більший ID) зверху
         const sorted = activeLots.sort((a, b) => b.id - a.id);
-        
-        // 3. Беремо перші 5
         setRecentLots(sorted.slice(0, 5));
+
+        // 2. Завантаження правил з адмінки
+        try {
+            const rulesRes = await api.get('/settings/rules');
+            setRules(rulesRes.data.content);
+        } catch (e) {
+            console.error("Не вдалося завантажити правила", e);
+        }
         
       } catch (err) {
-        console.error("Помилка завантаження лотів:", err);
+        console.error("Помилка завантаження даних:", err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchLots();
+    fetchData();
   }, [api]);
 
   return (
@@ -46,7 +52,7 @@ export default function MainPage() {
       }}>
         <h1 style={{ fontSize: '3.5rem', margin: '0 0 20px 0', fontWeight: '800' }}>Bid&Buy Marketplace</h1>
         <p style={{ fontSize: '1.25rem', opacity: '0.9', maxWidth: '600px', margin: '0 auto 30px' }}>
-          Чесні аукціони, прозорі правила та унікальні лоти. Продавай непотрібне, купуй мрію.
+          Продавай непотрібне, купуй мрію.
         </p>
         
         <div style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
@@ -61,7 +67,7 @@ export default function MainPage() {
 
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
         
-        {/* --- ПРАВИЛА ЗАСТОСУНКУ --- */}
+        {/* --- СТАТИЧНА СЕКЦІЯ: ЯК ЦЕ ПРАЦЮЄ --- */}
         <div style={{ marginBottom: '60px' }}>
           <h2 style={{ textAlign: 'center', fontSize: '2rem', marginBottom: '40px', color: '#1f2937' }}>📋 Як це працює?</h2>
           
@@ -81,12 +87,12 @@ export default function MainPage() {
             <div style={ruleCardStyle}>
               <div style={iconStyle}>🏆</div>
               <h3>3. Оплати перемогу</h3>
-              <p>Якщо твоя ставка найвища — ти маєш обмежений час на оплату. Не встиг? Перемога перейде наступному!</p>
+              <p>Якщо твоя ставка найвища — ти маєш обмежений час на оплату.</p>
             </div>
           </div>
         </div>
 
-        {/* --- ОСТАННІ ЛОТИ (Тільки активні) --- */}
+        {/* --- ОСТАННІ ЛОТИ --- */}
         <div style={{ marginBottom: '60px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
             <h2 style={{ margin: 0, fontSize: '2rem', color: '#1f2937' }}>🔥 Останні активні лоти</h2>
@@ -100,7 +106,7 @@ export default function MainPage() {
               {recentLots.map(lot => (
                 <Link to={`/lot/${lot.id}`} key={lot.id} style={{ textDecoration: 'none', color: 'inherit' }}>
                   <div style={lotCardStyle}>
-                    <div style={{ height: '180px', overflow: 'hidden', borderBottom: '1px solid #eee' }}>
+                    <div style={{ height: '180px', overflow: 'hidden', borderBottom: '1px solid #eee', background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <img 
                         src={lot.image_url || 'https://via.placeholder.com/300x200?text=No+Image'} 
                         alt={lot.title}
@@ -128,6 +134,27 @@ export default function MainPage() {
               Наразі немає нових активних лотів. Завітайте пізніше!
             </p>
           )}
+        </div>
+
+        {/* --- ДИНАМІЧНІ ПРАВИЛА (З АДМІНКИ) --- */}
+        <div style={{ marginBottom: '60px', background: '#fff', borderRadius: '24px', padding: '40px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'15px', marginBottom:'20px' }}>
+                <span style={{ fontSize:'2rem' }}>⚖️</span>
+                <h2 style={{ margin:0, fontSize:'2rem', color:'#1f2937' }}>Правила платформи</h2>
+            </div>
+            
+            <div style={{ 
+                background: '#f9fafb', 
+                padding: '30px', 
+                borderRadius: '16px', 
+                whiteSpace: 'pre-wrap', 
+                lineHeight: '1.8',
+                color: '#4b5563',
+                fontSize: '1.1rem',
+                borderLeft: '5px solid #4f46e5'
+            }}>
+                {rules || "Завантаження правил..."}
+            </div>
         </div>
 
       </div>

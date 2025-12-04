@@ -99,3 +99,14 @@ CREATE TABLE notifications (
 );
 
 CREATE INDEX idx_notifications_user_id ON notifications(user_id);
+
+CREATE TABLE site_settings (
+    key VARCHAR PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+-- Вставимо дефолтні правила
+INSERT INTO site_settings (key, value) VALUES (
+    'rules', 
+    '1. Заборонено публікувати нелегальний контент (наркотики, зброя тощо).\n2. Заборонено контент 18+ та насильство.\n3. Поважайте інших учасників аукціону.\n4. Ставки є зобов''язанням купити товар.\n5. Адміністрація має право видалити будь-який лот без попередження.'
+);

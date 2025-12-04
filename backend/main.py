@@ -8,10 +8,8 @@ from models import Base
 from background_tasks import start_background_tasks
 
 # --- ІМПОРТИ РОУТЕРІВ ---
-from routers import lots, bids, payments, users, admin
+from routers import lots, bids, payments, users, admin, settings
 
-# 1. СТВОРЮЄМО ПАПКУ ТУТ (Глобально)
-# Це гарантує, що вона існує до того, як StaticFiles спробує її знайти
 if not os.path.exists("uploads"):
     os.makedirs("uploads")
 
@@ -29,7 +27,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Bid&Buy API", lifespan=lifespan)
 
-# 2. Тепер це безпечно, бо папка вже існує
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 origins = [
@@ -51,6 +48,7 @@ app.include_router(bids.router)
 app.include_router(payments.router)
 app.include_router(users.router)
 app.include_router(admin.router)
+app.include_router(settings.router)
 
 @app.get("/")
 def read_root():
