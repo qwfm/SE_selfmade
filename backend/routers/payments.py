@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import List
 
 from database import get_db
-from models import Payment, Lot, User, Bid
+from models import Payment, Lot, User, Bid, Notification
 from schemas import PaymentCreate, PaymentOut
 from dependencies import get_current_user_db
 
@@ -13,14 +13,12 @@ router = APIRouter(
     prefix="/payments",
     tags=["payments"]
 )
-
 @router.post("/", response_model=PaymentOut)
 async def process_payment(
     payment_data: PaymentCreate,
     current_user: User = Depends(get_current_user_db),
     db: AsyncSession = Depends(get_db)
 ):
-    # 1. Знаходимо лот
     query = select(Lot).where(Lot.id == payment_data.lot_id)
     result = await db.execute(query)
     lot = result.scalar_one_or_none()
@@ -28,50 +26,52 @@ async def process_payment(
     if not lot:
         raise HTTPException(status_code=404, detail="Lot not found")
 
-    # 2. Перевірка: Чи лот вже проданий?
     if lot.status == "sold":
         raise HTTPException(status_code=400, detail="Lot already sold")
-
-    # 3. Перевірка: Чи є payment_deadline? (Аукціон має бути закритий)
     if not lot.payment_deadline:
         raise HTTPException(status_code=400, detail="Auction is still active. Cannot pay yet.")
     
-    # 4. Перевірка: Чи не прострочений payment_deadline?
     if lot.payment_deadline.replace(tzinfo=None) < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="Payment deadline has passed. Winner has changed.")
+         raise HTTPException(status_code=400, detail="Payment deadline expired")
 
-    # 5. Перевірка: Чи користувач є переможцем?
-    # Шукаємо найвищу активну ставку для цього лота
-    bid_query = select(Bid).where(
-        Bid.lot_id == lot.id,
-        Bid.is_active == True
-    ).order_by(Bid.amount.desc()).limit(1)
-    bid_result = await db.execute(bid_query)
-    highest_bid = bid_result.scalar_one_or_none()
+    bid_query = select(Bid)\
+        .where(Bid.lot_id == lot.id, Bid.is_active == True)\
+        .order_by(Bid.amount.desc())\
+        .limit(1)
+        
+    bid_res = await db.execute(bid_query)
+    winner_bid = bid_res.scalar_one_or_none()
 
-    if not highest_bid:
-        raise HTTPException(status_code=400, detail="No active bids for this lot")
-
-    if highest_bid.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Only the auction winner can pay for this lot")
-
-    # 6. Створення платежу
-    amount_to_pay = highest_bid.amount # Платимо стільки, скільки поставили
+    if not winner_bid or winner_bid.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the winner can pay for this lot")
 
     new_payment = Payment(
-        lot_id=lot.id,
+        amount=winner_bid.amount,
         user_id=current_user.id,
-        amount=amount_to_pay
+        lot_id=lot.id
     )
-    
-    # Оновлюємо статус лота
-    lot.status = "sold"
-    lot.payment_deadline = None  # Очищаємо payment_deadline після оплати
-
     db.add(new_payment)
+
+    lot.status = "sold"
+    lot.payment_deadline = None 
+
+    buyer_notification = Notification(
+        user_id=current_user.id,
+        message=f"✅ Оплата пройшла успішно! Ви придбали лот '{lot.title}' за ${winner_bid.amount}. Вітаємо!"
+    )
+    db.add(buyer_notification)
+
+    # Б) Повідомлення ПРОДАВЦЮ
+    seller_notification = Notification(
+        user_id=lot.seller_id,
+        message=f"💰 Ваш лот '{lot.title}' було оплачено! Покупець: {current_user.username}. Сума: ${winner_bid.amount}. Можете відправляти товар."
+    )
+    db.add(seller_notification)
+
+    # 9. Зберігаємо все
     await db.commit()
     await db.refresh(new_payment)
-
+    
     return new_payment
 
 # Endpoint для перевірки прострочених платежів та передачі перемоги наступному

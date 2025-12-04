@@ -28,7 +28,7 @@ export default function LotDetailPage() {
     title: '', description: '', start_price: '', min_step: ''
   });
   
-  // 🔥 Керування картинками при редагуванні 🔥
+  // Керування картинками при редагуванні
   const [imagesToDelete, setImagesToDelete] = useState([]); // ID існуючих картинок для видалення
   const [newImages, setNewImages] = useState([]); // File об'єкти (нові)
   const [newImagesPreview, setNewImagesPreview] = useState([]); // URL прев'юшок для нових
@@ -87,10 +87,20 @@ export default function LotDetailPage() {
       return () => newImagesPreview.forEach(url => URL.revokeObjectURL(url));
   }, [newImagesPreview]);
 
-  // --- 🔥 ЛОГІКА РЕДАГУВАННЯ КАРТИНОК 🔥 ---
+  // --- ЛОГІКА РЕДАГУВАННЯ КАРТИНОК ---
 
   // 1. Видалити існуючу (просто додаємо ID в список на видалення)
   const handleDeleteExisting = (imgId) => {
+      // Рахуємо поточну кількість (існуючі мінус видалені + нові)
+      const currentCount = (lot.images?.length || 0) - imagesToDelete.length;
+      const total = currentCount + newImages.length;
+
+      // 🛑 ПЕРЕВІРКА: Має залишитись хоча б одна
+      if (total <= 1) {
+          alert("Неможливо видалити: у лота повинна бути мінімум одна фотографія.");
+          return;
+      }
+
       if(!window.confirm("Видалити це фото? (Зміни вступлять в силу після збереження)")) return;
       setImagesToDelete(prev => [...prev, imgId]);
   };
@@ -117,6 +127,16 @@ export default function LotDetailPage() {
 
   // 3. Видалити нову (з прев'ю)
   const handleRemoveNewPhoto = (index) => {
+      // Рахуємо поточну кількість
+      const currentCount = (lot.images?.length || 0) - imagesToDelete.length;
+      const total = currentCount + newImages.length;
+
+      // 🛑 ПЕРЕВІРКА: Має залишитись хоча б одна
+      if (total <= 1) {
+          alert("Неможливо видалити: у лота повинна бути мінімум одна фотографія.");
+          return;
+      }
+
       URL.revokeObjectURL(newImagesPreview[index]);
       setNewImages(prev => prev.filter((_, i) => i !== index));
       setNewImagesPreview(prev => prev.filter((_, i) => i !== index));
@@ -131,12 +151,12 @@ export default function LotDetailPage() {
         formData.append('start_price', editForm.start_price);
         formData.append('min_step', editForm.min_step);
 
-        // 🔥 Додаємо нові картинки
+        // Додаємо нові картинки
         newImages.forEach(file => {
             formData.append('new_images', file);
         });
 
-        // 🔥 Додаємо ID на видалення
+        // Додаємо ID на видалення
         imagesToDelete.forEach(id => {
             formData.append('delete_image_ids', id);
         });
@@ -156,16 +176,6 @@ export default function LotDetailPage() {
     } catch (err) {
         const msg = err.response?.data?.detail || "Помилка при оновленні";
         alert(msg);
-    }
-  };
-  const handleRestoreLot = async () => {
-    if(!window.confirm("Відновити цей лот? Він знову стане активним.")) return;
-    try {
-        await api.post(`/lots/${id}/restore`);
-        alert("Лот відновлено! Таймер видалення скасовано.");
-        fetchData(); // Оновлюємо сторінку, статус стане 'active'
-    } catch (e) {
-        alert(e.response?.data?.detail || "Помилка відновлення");
     }
   };
 
@@ -195,6 +205,18 @@ export default function LotDetailPage() {
     }
   };
 
+  // --- НОВА ФУНКЦІЯ: ВІДНОВИТИ ЛОТ ---
+  const handleRestoreLot = async () => {
+      if(!window.confirm("Відновити цей лот? Він знову стане активним.")) return;
+      try {
+          await api.post(`/lots/${id}/restore`);
+          alert("Лот відновлено! Таймер видалення скасовано.");
+          fetchData(); 
+      } catch (e) {
+          alert(e.response?.data?.detail || "Помилка відновлення");
+      }
+  };
+
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Завантаження...</div>;
   if (!lot) return null;
 
@@ -206,7 +228,7 @@ export default function LotDetailPage() {
   const now = new Date();
   const isPaymentDeadlinePassed = paymentDeadlineDate && now > paymentDeadlineDate;
 
-  // 🔥 ФІЛЬТРАЦІЯ СТАВОК (Неплатники сховані) 🔥
+  // Фільтрація ставок
   const activeBids = bids.filter(b => b.is_active !== false);
   const highestBid = activeBids.length > 0 ? activeBids[0] : null;
 
@@ -228,7 +250,6 @@ export default function LotDetailPage() {
   const galleryImages = (lot.images && lot.images.length > 0) ? lot.images : [];
 
   // Для Edit Mode: рахуємо картинки для відображення
-  // (Всі з бази мінус ті, що помічені на видалення)
   const existingImagesToDisplay = galleryImages.filter(img => !imagesToDelete.includes(img.id));
   const totalImagesInEditor = existingImagesToDisplay.length + newImages.length;
 
@@ -372,6 +393,28 @@ export default function LotDetailPage() {
               </div>
           )}
           
+          {/* --- СПЕЦІАЛЬНИЙ БЛОК: CLOSED UNSOLD (Для продавця) --- */}
+          {!isEditing && isClosedUnsold && isSeller && (
+                <div style={{marginTop:'20px', padding:'15px', background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:'8px'}}>
+                    <h4 style={{marginTop:0, color:'#9a3412'}}>⚠️ Лот закритий без ставок</h4>
+                    <p style={{fontSize:'0.9rem', color:'#c2410c'}}>
+                        Цей лот буде автоматично видалений з системи через 24 години після закриття.
+                        Ви можете відновити його зараз, щоб дати йому другий шанс.
+                    </p>
+                    <button 
+                        onClick={handleRestoreLot}
+                        style={{
+                            width:'100%', padding:'12px', 
+                            background:'#ea580c', color:'white', fontWeight:'bold', 
+                            border:'none', borderRadius:'8px', cursor:'pointer',
+                            boxShadow:'0 2px 5px rgba(234, 88, 12, 0.3)'
+                        }}
+                    >
+                        🔄 Відновити лот (Активувати)
+                    </button>
+                </div>
+          )}
+
           {/* Таймер оплати */}
           {!isEditing && lot.payment_deadline && (
             <div style={{ padding: '1.25rem', background: isPaymentDeadlinePassed ? '#fef2f2' : '#eff6ff', borderRadius: '12px', border: `2px solid ${isPaymentDeadlinePassed ? '#fecaca' : '#bfdbfe'}` }}>
@@ -488,7 +531,6 @@ export default function LotDetailPage() {
                     </div>
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        {/* ТУТ ВАЖЛИВО: Ми рендеримо тільки activeBids */}
                         {activeBids.map((bid, index) => (
                         <div key={bid.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', background: index === 0 ? '#f0fdf4' : 'white', border: index === 0 ? '2px solid #bbf7d0' : '1px solid #f3f4f6', borderRadius: '12px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -509,26 +551,7 @@ export default function LotDetailPage() {
                 )}
             </div>
         )}
-        {!isEditing && isClosedUnsold && isSeller && (
-              <div style={{marginTop:'20px', padding:'15px', background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:'8px'}}>
-                  <h4 style={{marginTop:0, color:'#9a3412'}}>⚠️ Лот закритий без ставок</h4>
-                  <p style={{fontSize:'0.9rem', color:'#c2410c'}}>
-                      Цей лот буде автоматично видалений з системи через 24 години після закриття.
-                      Ви можете відновити його зараз, щоб дати йому другий шанс.
-                  </p>
-                  <button 
-                      onClick={handleRestoreLot}
-                      style={{
-                          width:'100%', padding:'12px', 
-                          background:'#ea580c', color:'white', fontWeight:'bold', 
-                          border:'none', borderRadius:'8px', cursor:'pointer',
-                          boxShadow:'0 2px 5px rgba(234, 88, 12, 0.3)'
-                      }}
-                  >
-                      🔄 Відновити лот (Активувати)
-                  </button>
-              </div>
-          )}
+
       </div>
       </div>
     </div>
