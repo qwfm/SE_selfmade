@@ -286,12 +286,61 @@ export default function LotDetailPage() {
             )}
 
             {/* ОПЛАТА */}
-            {isPending && isWinner && (
-                <div style={{padding:'20px', background:'#ecfdf5', borderRadius:'16px', textAlign:'center', border:'2px solid #a7f3d0'}}>
-                    <h3 style={{color:'#065f46'}}>Вітаємо з перемогою!</h3>
-                    <button onClick={handlePayment} style={{padding:'12px 30px', background:'#10b981', color:'white', border:'none', borderRadius:'8px', cursor:'pointer', fontWeight:'bold', fontSize:'1.1rem'}}>ОПЛАТИТИ ЗАРАЗ</button>
+            {isPending && isWinner && lot.payment_deadline && (
+            <div style={{ padding: '2rem', background: '#ecfdf5', borderRadius: '16px', border: '2px solid #d1fae5', textAlign: 'center' }}>
+                <h3 style={{ color: '#065f46', marginTop: 0, fontSize: '1.5rem' }}>Вітаємо! Ви перемогли 🎉</h3>
+                <p style={{ marginBottom: '1.5rem', color: '#047857', fontSize: '1.1rem' }}>
+                    Ваша ставка <strong>${highestBid?.amount}</strong> виграла.
+                </p>
+                
+                <div style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
+                    <button 
+                        onClick={handlePayment} 
+                        style={{ 
+                            padding: '12px 30px', 
+                            background: '#10b981', 
+                            color: 'white', 
+                            fontWeight: '800', 
+                            fontSize: '1.1rem', 
+                            borderRadius: '12px', 
+                            border: 'none', 
+                            cursor: 'pointer', 
+                            boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)' 
+                        }}
+                    >
+                        ПЕРЕЙТИ ДО ОПЛАТИ
+                    </button>
+
+                    {/* НОВА КНОПКА ВІДМОВИ */}
+                    <button 
+                        onClick={async () => {
+                            if(!window.confirm("Ви дійсно хочете відмовитись від перемоги? Лот перейде наступному учаснику.")) return;
+                            try {
+                                await api.delete(`/bids/${highestBid.id}`);
+                                alert("Ви відмовились від лоту.");
+                                fetchData();
+                            } catch (e) {
+                                alert(e.response?.data?.detail);
+                            }
+                        }}
+                        style={{ 
+                            padding: '12px 20px', 
+                            background: 'white', 
+                            color: '#ef4444', 
+                            fontWeight: 'bold', 
+                            fontSize: '1rem', 
+                            borderRadius: '12px', 
+                            border: '2px solid #fecaca', 
+                            cursor: 'pointer' 
+                        }}
+                    >
+                        Відмовитися
+                    </button>
                 </div>
-            )}
+            </div>
+        )}
+
+            
 
             {/* ІСТОРІЯ СТАВОК */}
             {!isEditing && (

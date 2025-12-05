@@ -46,7 +46,6 @@ export default function ProfilePage() {
       setForm({
         username: profileRes.data.username || '',
         phone_number: profileRes.data.phone_number || ''
-        // Bio видалено
       });
 
       const lotsRes = await api.get('/lots/my');
@@ -91,6 +90,12 @@ export default function ProfilePage() {
   
   const filteredBids = useMemo(() => myBids.filter(b => {
       if (bidsFilter === 'all') return true;
+      if (bidsFilter === 'won') {
+          // Логіка для виграних лотів: статус 'sold' або 'pending_payment' І юзер є переможцем
+          // Оскільки бекенд не повертає прямо "is_winner", ми припускаємо, що якщо статус sold/pending і це моя ставка - я міг виграти.
+          // Але точніше: if bid.lot.status === 'sold' || 'pending_payment'
+          return (b.lot.status === 'sold' || b.lot.status === 'pending_payment');
+      }
       if (!b.lot) return false;
       return b.lot.status === bidsFilter;
   }), [myBids, bidsFilter]);
@@ -229,8 +234,6 @@ export default function ProfilePage() {
               <strong style={{ minWidth: '150px', color: '#4b5563' }}>Телефон:</strong>
               <span style={{ color: '#111827' }}>{profile.phone_number || <span style={{color: '#9ca3af'}}>Не вказано</span>}</span>
             </div>
-            {/* ПОЛЕ "ПРО СЕБЕ" ВИДАЛЕНО ЗВІДСИ */}
-            
             <button onClick={() => setIsEditing(true)} style={editBtnStyle}>✎ Редагувати профіль</button>
           </div>
         ) : (
@@ -243,8 +246,6 @@ export default function ProfilePage() {
               <label style={labelStyle}>Телефон</label>
               <input style={inputStyle} value={form.phone_number} onChange={e => setForm({...form, phone_number: e.target.value})} placeholder="+380..." />
             </div>
-            {/* ПОЛЕ "ПРО СЕБЕ" ВИДАЛЕНО ЗВІДСИ */}
-            
             <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
               <button onClick={handleSave} style={{...editBtnStyle, background: '#10b981', color: 'white'}}>Зберегти</button>
               <button onClick={handleCancel} style={{...editBtnStyle, background: '#f3f4f6', color: '#374151'}}>Скасувати</button>
@@ -390,6 +391,7 @@ export default function ProfilePage() {
             <h2 style={{ margin: 0, fontSize: '1.5rem', color: '#1f2937' }}>💰 Мої ставки</h2>
             <select value={bidsFilter} onChange={(e) => setBidsFilter(e.target.value)} style={selectStyle}>
               <option value="all">Всі</option>
+              <option value="won">🏆 Виграні мною</option> {/* НОВИЙ ФІЛЬТР */}
               <option value="active">Активні лоти</option>
               <option value="pending_payment">Очікують оплати</option>
               <option value="sold">Завершені</option>
@@ -400,30 +402,70 @@ export default function ProfilePage() {
              <p style={{ color: '#9ca3af', textAlign: 'center', padding: '20px' }}>{bidsFilter === 'all' ? 'Ви ще не робили ставок' : 'Ставок з таким статусом немає'}</p>
           ) : (
              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-               {filteredBids.map(bid => (
-                 <div key={bid.id} style={cardItemStyle}>
-                   <div style={{ flex: 1 }}>
-                       <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>{bid.lot ? bid.lot.title : <span style={{color:'red'}}>Лот видалено</span>}</div>
-                       <div style={{ color: '#10b981', fontWeight: 'bold' }}>Ваша ставка: ${bid.amount}</div>
-                       <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '5px' }}>
-                         {new Date(bid.timestamp).toLocaleDateString()} {new Date(bid.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                       </div>
-                       {!bid.is_active && <span style={{fontSize: '0.8rem', color: '#ef4444', fontWeight: 'bold'}}>✖ Ставка неактивна (Термін оплати минув)</span>}
-                       {bid.lot && (
-                           <div style={{marginTop: '5px'}}>
-                               <span style={{fontSize: '0.8rem', color: '#6b7280'}}>Статус лота: </span>
-                               <span style={getStatusBadgeStyle(bid.lot.status, true)}>{getStatusLabel(bid.lot.status)}</span>
-                           </div>
-                       )}
-                   </div>
-                   <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'flex-end' }}>
-                       {bid.lot && <Link to={`/lot/${bid.lot_id}`} style={linkBtnStyle}>Перейти</Link>}
-                       {bid.is_active && bid.lot && bid.lot.status === 'active' && (
-                         <button onClick={() => handleCancelBid(bid.id)} style={deleteBtnStyle} title="Скасувати ставку">Скасувати</button>
-                       )}
-                   </div>
-                 </div>
-               ))}
+               {filteredBids.map(bid => {
+                // 1. Лот повинен бути в "виграшному" стані
+                const isLotSoldOrPending = bid.lot && (bid.lot.status === 'sold' || bid.lot.status === 'pending_payment');
+                
+                // 2. Сама ставка має бути активною (якщо прострочили оплату, бекенд ставить is_active=False)
+                // 3. Сума вашої ставки має дорівнювати поточній ціні лота (це гарантує, що виграла саме ЦЯ ставка)
+                const isWon = isLotSoldOrPending && bid.is_active && (Number(bid.amount) === Number(bid.lot.current_price));
+
+                return (
+                  <div key={bid.id} style={cardItemStyle}>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 'bold', marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          {bid.lot ? bid.lot.title : <span style={{color:'red'}}>Лот видалено</span>}
+                          
+                          {/* ПОМІТКА "ПРОДАНО ВАМ" - ТІЛЬКИ ЯКЩО ДІЙСНО ВИГРАЛИ */}
+                          {isWon && (
+                              <span style={{background:'#d1fae5', color:'#065f46', fontSize:'0.75rem', padding:'2px 8px', borderRadius:'12px', border:'1px solid #a7f3d0'}}>
+                                  🏆 Виграно вами
+                              </span>
+                          )}
+
+                          {/* ПОМІТКА ЯКЩО СТАВКА СКАСОВАНА/ПРОСТРОЧЕНА */}
+                          {!bid.is_active && (
+                              <span style={{background:'#f3f4f6', color:'#9ca3af', fontSize:'0.75rem', padding:'2px 8px', borderRadius:'12px', border:'1px solid #e5e7eb'}}>
+                                  ✖ Скасовано / Час вийшов
+                              </span>
+                          )}
+                        </div>
+                        
+                        <div style={{ color: isWon ? '#059669' : (!bid.is_active ? '#9ca3af' : '#10b981'), fontWeight: 'bold' }}>
+                            Ваша ставка: ${bid.amount}
+                        </div>
+                        
+                        <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '5px' }}>
+                          {new Date(bid.timestamp).toLocaleDateString()} {new Date(bid.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </div>
+                        
+                        {bid.lot && (
+                            <div style={{marginTop: '5px'}}>
+                                <span style={{fontSize: '0.8rem', color: '#6b7280'}}>Статус лота: </span>
+                                <span style={getStatusBadgeStyle(bid.lot.status, true)}>
+                                    {getStatusLabel(bid.lot.status)}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'flex-end' }}>
+                        {bid.lot && <Link to={`/lot/${bid.lot_id}`} style={linkBtnStyle}>Перейти</Link>}
+                        
+                        {/* Кнопка скасування тільки для АКТИВНИХ ставок */}
+                        {bid.is_active && bid.lot && (bid.lot.status === 'active' || (bid.lot.status === 'pending_payment' && isWon)) && (
+                          <button 
+                            onClick={() => handleCancelBid(bid.id)}
+                            style={deleteBtnStyle}
+                            title="Скасувати ставку"
+                          >
+                            {bid.lot.status === 'pending_payment' ? 'Відмовитися' : 'Скасувати'}
+                          </button>
+                        )}
+                    </div>
+                  </div>
+                );
+              })}
              </div>
           )}
         </div>
