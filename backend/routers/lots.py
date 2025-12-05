@@ -200,61 +200,33 @@ async def close_lot(
     result = await db.execute(query)
     lot = result.scalar_one_or_none()
 
-    if not lot:
-        raise HTTPException(status_code=404, detail="Lot not found")
+    if not lot: raise HTTPException(status_code=404, detail="Lot not found")
+    if lot.seller_id != current_user.id: raise HTTPException(status_code=403, detail="Not authorized")
+    if lot.status != "active": raise HTTPException(status_code=400, detail="Auction is closed")
 
-    if lot.seller_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-
-    if lot.status != "active":
-        raise HTTPException(status_code=400, detail="Auction is already closed")
-
+    # Шукаємо переможця
     bid_query = select(Bid).where(Bid.lot_id == lot.id, Bid.is_active == True).order_by(Bid.amount.desc()).limit(1)
     bid_result = await db.execute(bid_query)
     highest_bid = bid_result.scalar_one_or_none()
 
+    # ВАЖЛИВА ЗМІНА: Забороняємо закривати без ставок
     if not highest_bid:
-        lot.status = "closed_unsold"
-        lot.closed_at = datetime.now(timezone.utc)
-        message = "Auction closed without bids"
-    else:
-        lot.status = "pending_payment"
-        now = datetime.now(timezone.utc)
-        lot.payment_deadline = now + timedelta(
-            days=lot.payment_deadline_days,
-            hours=lot.payment_deadline_hours,
-            minutes=lot.payment_deadline_minutes
+        raise HTTPException(
+            status_code=400, 
+            detail="Cannot close auction without bids. Please delete the lot instead."
         )
-        message = "Auction closed. Winner selected."
+
+    # Якщо є переможець
+    lot.status = "pending_payment"
+    now = datetime.now(timezone.utc)
+    lot.payment_deadline = now + timedelta(
+        days=lot.payment_deadline_days,
+        hours=lot.payment_deadline_hours,
+        minutes=lot.payment_deadline_minutes
+    )
 
     await db.commit()
-    return {"message": message, "status": lot.status}
-
-# 7. Відновити лот
-@router.post("/{lot_id}/restore")
-async def restore_lot(
-    lot_id: int,
-    current_user: User = Depends(get_current_user_db),
-    db: AsyncSession = Depends(get_db)
-):
-    query = select(Lot).where(Lot.id == lot_id)
-    result = await db.execute(query)
-    lot = result.scalar_one_or_none()
-
-    if not lot:
-        raise HTTPException(status_code=404, detail="Lot not found")
-
-    if lot.seller_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-
-    if lot.status != "closed_unsold":
-        raise HTTPException(status_code=400, detail="Can only restore unsold closed lots")
-
-    lot.status = "active"
-    lot.closed_at = None
-    
-    await db.commit()
-    return {"message": "Lot restored"}
+    return {"message": "Auction closed. Waiting for payment.", "status": lot.status}
 
 # 8. Видалити лот
 @router.delete("/{lot_id}")
