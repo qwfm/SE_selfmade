@@ -13,7 +13,7 @@ export default function CreateLotPage() {
     start_price: '', 
     min_step: 10, 
     payment_deadline_days: 0, 
-    payment_deadline_hours: 24, 
+    payment_deadline_hours: 23, 
     payment_deadline_minutes: 0,
     lot_type: 'private' // <--- ДОДАНО: Тип лота за замовчуванням
   });

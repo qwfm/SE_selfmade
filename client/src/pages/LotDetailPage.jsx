@@ -304,30 +304,6 @@ export default function LotDetailPage() {
         
         {/* БЛОК 1: НАЗВА, ОПИС, ТИП */}
         <div style={{ background: 'white', borderRadius: '16px', padding: '2rem', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)' }}>
-          
-          {/* --- НОВЕ: ВІДОБРАЖЕННЯ ТИПУ ЛОТА --- */}
-          <div style={{ marginBottom: '10px' }}>
-              {lot.lot_type === 'charity' ? (
-                  <span style={{ 
-                      background: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', 
-                      color: 'white', padding: '6px 12px', borderRadius: '20px', 
-                      fontSize: '0.85rem', fontWeight: 'bold', display: 'inline-block',
-                      boxShadow: '0 4px 10px rgba(219, 39, 119, 0.3)'
-                  }}>
-                      ❤️ Благодійний лот
-                  </span>
-              ) : (
-                  <span style={{ 
-                      background: '#f3f4f6', 
-                      color: '#4b5563', padding: '6px 12px', borderRadius: '20px', 
-                      fontSize: '0.85rem', fontWeight: '600', display: 'inline-block',
-                      border: '1px solid #e5e7eb'
-                  }}>
-                      💼 Звичайний лот
-                  </span>
-              )}
-          </div>
-
           {isEditing ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                 <div>
@@ -342,7 +318,30 @@ export default function LotDetailPage() {
           ) : (
             <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
-                    <h1 style={{ margin: '0 0 1rem 0', fontSize: '2.5rem', fontWeight: '800', color: '#1f2937', lineHeight: '1.2' }}>{lot.title}</h1>
+                    <div>
+                        {/* --- ТУТ МИ ДОДАЛИ АЙДІШНІК --- */}
+                        <div style={{fontSize: '0.85rem', color: '#9ca3af', marginBottom: '5px', fontWeight: 'bold', letterSpacing: '0.5px'}}>
+                            LOT #{lot.id}
+                        </div>
+
+                        {/* --- БЕЙДЖ БЛАГОДІЙНОСТІ --- */}
+                        {lot.lot_type === 'charity' ? (
+                            <span style={{
+                                background: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)',
+                                color: 'white', padding: '4px 10px', borderRadius: '20px',
+                                fontSize: '0.8rem', fontWeight: 'bold', display: 'inline-block', marginBottom: '10px'
+                            }}>
+                                ❤️ Благодійний
+                            </span>
+                        ) : (
+                            // Можна показувати бейдж "Звичайний", а можна ні. Для чистоти дизайну я часто приховую "звичайний".
+                            // Але якщо хочете - розкоментуйте:
+                            /* <span style={{background:'#f3f4f6', color:'#6b7280', padding:'4px 10px', borderRadius:'20px', fontSize:'0.8rem', fontWeight:'bold', display:'inline-block', marginBottom:'10px'}}>💼 Приватний</span> */
+                            null
+                        )}
+                        <h1 style={{ margin: '0 0 1rem 0', fontSize: '2.5rem', fontWeight: '800', color: '#1f2937', lineHeight: '1.2' }}>{lot.title}</h1>
+                    </div>
+                    
                     {canEdit && (
                         <button onClick={() => setIsEditing(true)} style={{ background: '#e0e7ff', color: '#4338ca', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', whiteSpace: 'nowrap' }}>✎ Редагувати</button>
                     )}
@@ -399,8 +398,6 @@ export default function LotDetailPage() {
               <div style={{ fontSize: '1.2rem', fontWeight: '700', color: isPaymentDeadlinePassed ? '#dc2626' : '#1e40af' }}>{paymentDeadlineDate.toLocaleString('uk-UA')}</div>
             </div>
           )}
-          
-          {!isEditing && lot.status === 'active'}
         </div>
 
         {/* Продавець */}
