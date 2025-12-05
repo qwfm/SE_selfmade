@@ -76,6 +76,7 @@ class Bid(Base):
     is_active = Column(Boolean, default=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     lot_id = Column(Integer, ForeignKey("lots.id"))
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
     bidder = relationship("User", back_populates="bids")
     lot = relationship("Lot", back_populates="bids")
 

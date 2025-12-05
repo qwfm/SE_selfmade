@@ -8,7 +8,7 @@ import uuid
 import os
 
 from database import get_db
-from models import Lot, User, Bid, LotImage
+from models import Lot, User, Bid, LotImage, Notification
 from schemas import LotOut
 from dependencies import get_current_user_db 
 from sqlalchemy.orm import joinedload
@@ -224,7 +224,12 @@ async def close_lot(
         hours=lot.payment_deadline_hours,
         minutes=lot.payment_deadline_minutes
     )
-
+    winner_notification = Notification(
+        user_id=highest_bid.user_id,
+        message=f"🎉 Ви перемогли в аукціоні '{lot.title}'! Ваша ставка: ${highest_bid.amount}. Будь ласка, оплатіть лот до {lot.payment_deadline.strftime('%d.%m %H:%M')}."
+    )
+    db.add(winner_notification)
+    
     await db.commit()
     return {"message": "Auction closed. Waiting for payment.", "status": lot.status}
 
