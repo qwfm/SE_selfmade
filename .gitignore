@@ -29,10 +29,5 @@ dist-ssr
 backend/.env
 client/.env
 
-.venv/
-venv/
-env/
-ENV/
-
 
 */.env
