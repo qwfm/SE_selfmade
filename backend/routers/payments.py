@@ -29,9 +29,9 @@ async def process_payment(
     if lot.status == "sold":
         raise HTTPException(status_code=400, detail="Lot already sold")
     if not lot.payment_deadline:
-        raise HTTPException(status_code=400, detail="Auction is still active. Cannot pay yet.")
+        raise HTTPException(status_code=400, detail="Payment deadline expired")
     
-    if lot.payment_deadline.replace(tzinfo=None) < datetime.utcnow():
+    if lot.payment_deadline.replace(tzinfo=None) < datetime.now():
          raise HTTPException(status_code=400, detail="Payment deadline expired")
 
     bid_query = select(Bid)\

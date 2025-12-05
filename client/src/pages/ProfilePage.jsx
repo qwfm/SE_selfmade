@@ -45,8 +45,8 @@ export default function ProfilePage() {
       setProfile(profileRes.data);
       setForm({
         username: profileRes.data.username || '',
-        phone_number: profileRes.data.phone_number || '',
-        bio: profileRes.data.bio || ''
+        phone_number: profileRes.data.phone_number || ''
+        // Bio видалено
       });
 
       const lotsRes = await api.get('/lots/my');
@@ -126,8 +126,7 @@ export default function ProfilePage() {
   const handleCancel = () => {
     setForm({
       username: profile.username || '',
-      phone_number: profile.phone_number || '',
-      bio: profile.bio || ''
+      phone_number: profile.phone_number || ''
     });
     setIsEditing(false);
   };
@@ -211,7 +210,6 @@ export default function ProfilePage() {
       {activeTab === 'profile' && (
       <div style={cardStyle}>
         <div style={{ marginBottom: '30px', borderBottom: '1px solid #eee', paddingBottom: '20px' }}>
-          {/* АВАТАРКА ВИДАЛЕНА */}
           <div>
             <h2 style={{ margin: 0, color: '#1f2937' }}>
                 {profile.username || user?.nickname || 'Користувач'}
@@ -231,10 +229,8 @@ export default function ProfilePage() {
               <strong style={{ minWidth: '150px', color: '#4b5563' }}>Телефон:</strong>
               <span style={{ color: '#111827' }}>{profile.phone_number || <span style={{color: '#9ca3af'}}>Не вказано</span>}</span>
             </div>
-            <div style={rowStyle}>
-              <strong style={{ minWidth: '150px', color: '#4b5563' }}>Про себе:</strong>
-              <p style={{ margin: 0, color: '#111827' }}>{profile.bio || <span style={{color: '#9ca3af'}}>...</span>}</p>
-            </div>
+            {/* ПОЛЕ "ПРО СЕБЕ" ВИДАЛЕНО ЗВІДСИ */}
+            
             <button onClick={() => setIsEditing(true)} style={editBtnStyle}>✎ Редагувати профіль</button>
           </div>
         ) : (
@@ -247,10 +243,8 @@ export default function ProfilePage() {
               <label style={labelStyle}>Телефон</label>
               <input style={inputStyle} value={form.phone_number} onChange={e => setForm({...form, phone_number: e.target.value})} placeholder="+380..." />
             </div>
-            <div>
-              <label style={labelStyle}>Про себе</label>
-              <textarea style={{...inputStyle, height: '80px', resize: 'vertical'}} value={form.bio} onChange={e => setForm({...form, bio: e.target.value})} />
-            </div>
+            {/* ПОЛЕ "ПРО СЕБЕ" ВИДАЛЕНО ЗВІДСИ */}
+            
             <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
               <button onClick={handleSave} style={{...editBtnStyle, background: '#10b981', color: 'white'}}>Зберегти</button>
               <button onClick={handleCancel} style={{...editBtnStyle, background: '#f3f4f6', color: '#374151'}}>Скасувати</button>
