@@ -14,7 +14,8 @@ export default function CreateLotPage() {
     min_step: 10, 
     payment_deadline_days: 0, 
     payment_deadline_hours: 24, 
-    payment_deadline_minutes: 0, 
+    payment_deadline_minutes: 0,
+    lot_type: 'private' // <--- ДОДАНО: Тип лота за замовчуванням
   });
   
   // Стейт для списку файлів та їх прев'ю
@@ -28,7 +29,7 @@ export default function CreateLotPage() {
     };
   }, [previewUrls]);
 
-  // --- НОВА ФУНКЦІЯ: Додавання фото (APPEND) ---
+  // --- ФУНКЦІЯ: Додавання фото (APPEND) ---
   const handleAddPhoto = (e) => {
     const newFiles = Array.from(e.target.files);
     if (newFiles.length === 0) return;
@@ -36,7 +37,6 @@ export default function CreateLotPage() {
     // Перевірка ліміту
     if (selectedFiles.length + newFiles.length > 5) {
       alert(`Максимум 5 фотографій! Ви вже додали ${selectedFiles.length}, намагаєтесь додати ще ${newFiles.length}.`);
-      // Скидаємо інпут, щоб можна було вибрати заново
       e.target.value = '';
       return;
     }
@@ -44,20 +44,17 @@ export default function CreateLotPage() {
     // Створюємо прев'ю для нових файлів
     const newUrls = newFiles.map(file => URL.createObjectURL(file));
 
-    // Додаємо нові файли до старих (використовуємо spread operator ...)
+    // Додаємо нові файли до старих
     setSelectedFiles(prevFiles => [...prevFiles, ...newFiles]);
     setPreviewUrls(prevUrls => [...prevUrls, ...newUrls]);
 
-    // Скидаємо значення інпуту, щоб якщо користувач вибере той самий файл знову, подія onChange спрацювала
     e.target.value = '';
   };
 
-  // --- НОВА ФУНКЦІЯ: Видалення конкретного фото ---
+  // --- ФУНКЦІЯ: Видалення конкретного фото ---
   const removePhoto = (indexToRemove) => {
-    // Звільняємо пам'ять, яку займало прев'ю
     URL.revokeObjectURL(previewUrls[indexToRemove]);
 
-    // Фільтруємо масиви, залишаючи тільки ті елементи, індекс яких не збігається з тим, що видаляємо
     setSelectedFiles(prevFiles => 
         prevFiles.filter((_, index) => index !== indexToRemove)
     );
@@ -86,6 +83,9 @@ export default function CreateLotPage() {
       formData.append('payment_deadline_days', form.payment_deadline_days);
       formData.append('payment_deadline_hours', form.payment_deadline_hours);
       formData.append('payment_deadline_minutes', form.payment_deadline_minutes);
+      
+      // Додаємо тип лота
+      formData.append('lot_type', form.lot_type); 
 
       // Додаємо кожне фото окремо
       selectedFiles.forEach((file) => {
@@ -168,6 +168,44 @@ export default function CreateLotPage() {
             </div>
           </div>
 
+          {/* --- НОВИЙ ЕЛЕМЕНТ: ВИБІР ТИПУ ЛОТА --- */}
+          <div>
+            <label style={labelStyle}>Тип лота</label>
+            <div style={{ display: 'flex', gap: '15px' }}>
+                
+                {/* Картка "Звичайний" */}
+                <div 
+                    onClick={() => setForm({...form, lot_type: 'private'})}
+                    style={{
+                        flex: 1, padding: '15px', borderRadius: '8px', cursor: 'pointer',
+                        border: form.lot_type === 'private' ? '2px solid #4f46e5' : '1px solid #d1d5db',
+                        background: form.lot_type === 'private' ? '#e0e7ff' : 'white',
+                        textAlign: 'center', transition: 'all 0.2s',
+                        color: form.lot_type === 'private' ? '#374151' : '#6b7280'
+                    }}
+                >
+                    <div style={{ fontSize: '1.5rem', marginBottom: '5px' }}>💼</div>
+                    <div style={{ fontWeight: '600' }}>Звичайний</div>
+                </div>
+
+                {/* Картка "Благодійний" */}
+                <div 
+                    onClick={() => setForm({...form, lot_type: 'charity'})}
+                    style={{
+                        flex: 1, padding: '15px', borderRadius: '8px', cursor: 'pointer',
+                        border: form.lot_type === 'charity' ? '2px solid #db2777' : '1px solid #d1d5db',
+                        background: form.lot_type === 'charity' ? '#fce7f3' : 'white',
+                        textAlign: 'center', transition: 'all 0.2s',
+                        color: form.lot_type === 'charity' ? '#9d174d' : '#6b7280'
+                    }}
+                >
+                    <div style={{ fontSize: '1.5rem', marginBottom: '5px' }}>❤️</div>
+                    <div style={{ fontWeight: '600' }}>Благодійний</div>
+                </div>
+
+            </div>
+          </div>
+
           <hr style={{ border: '0', borderTop: '1px solid #e5e7eb', margin: '10px 0' }} />
 
           {/* Дедлайн оплати */}
@@ -194,7 +232,7 @@ export default function CreateLotPage() {
 
           <hr style={{ border: '0', borderTop: '1px solid #e5e7eb', margin: '10px 0' }} />
 
-          {/* --- НОВИЙ БЛОК ЗАВАНТАЖЕННЯ ФОТО --- */}
+          {/* --- БЛОК ЗАВАНТАЖЕННЯ ФОТО (Множинний) --- */}
           <div>
             <label style={labelStyle}>
                 Фотографії товару ({selectedFiles.length}/5)
@@ -256,11 +294,10 @@ export default function CreateLotPage() {
                   }}>
                       <span style={{ fontSize: '24px', fontWeight: 'bold' }}>+</span>
                       <span style={{ fontSize: '12px', marginTop: '4px' }}>Додати</span>
-                      {/* Прихований інпут, який спрацьовує при кліку на лейбл */}
                       <input 
                           type="file" 
                           accept="image/*" 
-                          multiple // Дозволяємо вибрати кілька за раз, якщо користувач хоче
+                          multiple 
                           onChange={handleAddPhoto}
                           style={{ display: 'none' }}
                       />

@@ -51,6 +51,7 @@ class Lot(Base):
     payment_deadline_hours = Column(Integer, nullable=False, default=24)
     payment_deadline_minutes = Column(Integer, nullable=False, default=0)
     payment_deadline = Column(DateTime(timezone=True), nullable=True)
+    lot_type = Column(String, default="private")
     seller_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     closed_at = Column(DateTime(timezone=True), nullable=True)

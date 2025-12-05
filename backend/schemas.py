@@ -58,7 +58,8 @@ class LotBase(BaseModel):
     payment_deadline_days: Optional[int] = 0
     payment_deadline_hours: Optional[int] = 24
     payment_deadline_minutes: Optional[int] = 0
-    image_url: Optional[str] = None # Головна картинка (обкладинка)
+    lot_type: Optional[str] = "private"
+    image_url: Optional[str] = None 
 
 class LotCreate(LotBase):
     pass

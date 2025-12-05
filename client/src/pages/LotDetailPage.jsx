@@ -14,7 +14,7 @@ export default function LotDetailPage() {
   const [bids, setBids] = useState([]);
   const [myDbId, setMyDbId] = useState(null);
   
-  // Стан для Галереї (яка картинка зараз велика)
+  // Стан для Галереї
   const [activeImage, setActiveImage] = useState(null);
 
   // Стани форми ставки та UI
@@ -29,9 +29,9 @@ export default function LotDetailPage() {
   });
   
   // Керування картинками при редагуванні
-  const [imagesToDelete, setImagesToDelete] = useState([]); // ID існуючих картинок для видалення
-  const [newImages, setNewImages] = useState([]); // File об'єкти (нові)
-  const [newImagesPreview, setNewImagesPreview] = useState([]); // URL прев'юшок для нових
+  const [imagesToDelete, setImagesToDelete] = useState([]); 
+  const [newImages, setNewImages] = useState([]); 
+  const [newImagesPreview, setNewImagesPreview] = useState([]); 
 
   // --- ЗАВАНТАЖЕННЯ ДАНИХ ---
   const fetchData = async () => {
@@ -55,7 +55,7 @@ export default function LotDetailPage() {
         min_step: lotRes.data.min_step
       });
       
-      // Галерея: скидаємо стейт
+      // Галерея
       if (lotRes.data.images && lotRes.data.images.length > 0) {
         setActiveImage(lotRes.data.images[0].image_url);
       } else {
@@ -82,40 +82,33 @@ export default function LotDetailPage() {
 
   useEffect(() => { fetchData(); }, [id, isAuthenticated]);
 
-  // Очистка прев'ю при анмаунті
   useEffect(() => {
       return () => newImagesPreview.forEach(url => URL.revokeObjectURL(url));
   }, [newImagesPreview]);
 
   // --- ЛОГІКА РЕДАГУВАННЯ КАРТИНОК ---
-
-  // 1. Видалити існуючу (просто додаємо ID в список на видалення)
   const handleDeleteExisting = (imgId) => {
-      // Рахуємо поточну кількість
       const currentCount = (lot.images?.length || 0) - imagesToDelete.length;
       const total = currentCount + newImages.length;
 
-      // ПЕРЕВІРКА: Має залишитись хоча б одна
       if (total <= 1) {
           alert("Неможливо видалити: у лота повинна бути мінімум одна фотографія.");
           return;
       }
 
-      if(!window.confirm("Видалити це фото? (Зміни вступлять в силу після збереження)")) return;
+      if(!window.confirm("Видалити це фото?")) return;
       setImagesToDelete(prev => [...prev, imgId]);
   };
 
-  // 2. Додати нову (через input)
   const handleAddNewPhoto = (e) => {
       const files = Array.from(e.target.files);
       if (files.length === 0) return;
 
-      // Рахуємо майбутню кількість
       const currentCount = (lot.images?.length || 0) - imagesToDelete.length;
       const futureCount = currentCount + newImages.length + files.length;
 
       if (futureCount > 5) {
-          alert(`Ліміт 5 фото. Ви намагаєтесь додати забагато.`);
+          alert(`Ліміт 5 фото.`);
           return;
       }
 
@@ -125,13 +118,10 @@ export default function LotDetailPage() {
       e.target.value = ''; 
   };
 
-  // 3. Видалити нову (з прев'ю)
   const handleRemoveNewPhoto = (index) => {
-      // Рахуємо поточну кількість
       const currentCount = (lot.images?.length || 0) - imagesToDelete.length;
       const total = currentCount + newImages.length;
 
-      // ПЕРЕВІРКА: Має залишитись хоча б одна
       if (total <= 1) {
           alert("Неможливо видалити: у лота повинна бути мінімум одна фотографія.");
           return;
@@ -151,15 +141,8 @@ export default function LotDetailPage() {
         formData.append('start_price', editForm.start_price);
         formData.append('min_step', editForm.min_step);
 
-        // Додаємо нові картинки
-        newImages.forEach(file => {
-            formData.append('new_images', file);
-        });
-
-        // Додаємо ID на видалення
-        imagesToDelete.forEach(id => {
-            formData.append('delete_image_ids', id);
-        });
+        newImages.forEach(file => formData.append('new_images', file));
+        imagesToDelete.forEach(id => formData.append('delete_image_ids', id));
 
         await api.patch(`/lots/${id}`, formData, {
             headers: { 'Content-Type': 'multipart/form-data' }
@@ -167,15 +150,13 @@ export default function LotDetailPage() {
         
         alert("Лот успішно оновлено!");
         setIsEditing(false);
-        // Скидаємо тимчасові масиви
         setImagesToDelete([]);
         setNewImages([]);
         setNewImagesPreview([]);
         
         fetchData(); 
     } catch (err) {
-        const msg = err.response?.data?.detail || "Помилка при оновленні";
-        alert(msg);
+        alert(err.response?.data?.detail || "Помилка при оновленні");
     }
   };
 
@@ -187,8 +168,7 @@ export default function LotDetailPage() {
       setBidAmount('');
       fetchData();
     } catch (err) {
-      const msg = err.response?.data?.detail || err.message;
-      alert(`Помилка: ${msg}`);
+      alert(`Помилка: ${err.response?.data?.detail || err.message}`);
     }
   };
 
@@ -205,12 +185,11 @@ export default function LotDetailPage() {
     }
   };
 
-  // --- НОВА ФУНКЦІЯ: ВІДНОВИТИ ЛОТ ---
   const handleRestoreLot = async () => {
-      if(!window.confirm("Відновити цей лот? Він знову стане активним.")) return;
+      if(!window.confirm("Відновити цей лот?")) return;
       try {
           await api.post(`/lots/${id}/restore`);
-          alert("Лот відновлено! Таймер видалення скасовано.");
+          alert("Лот відновлено!");
           fetchData(); 
       } catch (e) {
           alert(e.response?.data?.detail || "Помилка відновлення");
@@ -235,7 +214,6 @@ export default function LotDetailPage() {
   const isWinner = isAuthenticated && highestBid && highestBid.user_id === myDbId && (isPendingPayment || isSold);
   const isSeller = isAuthenticated && lot.seller_id === myDbId;
 
-  // Умова редагування
   const canEdit = isSeller && activeBids.length === 0 && lot.status === 'active';
 
   let statusText = "Активний";
@@ -246,10 +224,7 @@ export default function LotDetailPage() {
 
   const minNextBid = Number(lot.current_price) + Number(lot.min_step);
   
-  // Для View Mode
   const galleryImages = (lot.images && lot.images.length > 0) ? lot.images : [];
-
-  // Для Edit Mode
   const existingImagesToDisplay = galleryImages.filter(img => !imagesToDelete.includes(img.id));
   const totalImagesInEditor = existingImagesToDisplay.length + newImages.length;
 
@@ -266,7 +241,7 @@ export default function LotDetailPage() {
       <div>
         <div style={{ background: 'white', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)', position: 'sticky', top: '20px' }}>
           
-          {/* VIEW MODE: Звичайна галерея */}
+          {/* VIEW MODE */}
           {!isEditing && (
               <>
                 <div style={{ width: '100%', height: '500px', background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -294,31 +269,23 @@ export default function LotDetailPage() {
               </>
           )}
 
-          {/* EDIT MODE: Менеджер картинок */}
+          {/* EDIT MODE */}
           {isEditing && (
               <div style={{ padding: '20px' }}>
                   <h3 style={{ marginTop: 0, fontSize: '1.1rem', color: '#374151' }}>Керування фото ({totalImagesInEditor}/5)</h3>
-                  
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px' }}>
-                      
-                      {/* 1. Існуючі картинки */}
                       {existingImagesToDisplay.map(img => (
                           <div key={img.id} style={{ position: 'relative', width: '90px', height: '90px' }}>
                               <img src={img.image_url} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
-                              {/* Кнопка видалення */}
                               <button onClick={() => handleDeleteExisting(img.id)} style={{ position: 'absolute', top: -8, right: -8, background: '#ef4444', color: 'white', borderRadius: '50%', width: '24px', height: '24px', border: 'none', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>✕</button>
                           </div>
                       ))}
-
-                      {/* 2. Нові (Прев'ю) */}
                       {newImagesPreview.map((url, idx) => (
                           <div key={idx} style={{ position: 'relative', width: '90px', height: '90px' }}>
                               <img src={url} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '8px', border: '2px solid #10b981' }} />
                               <button onClick={() => handleRemoveNewPhoto(idx)} style={{ position: 'absolute', top: -8, right: -8, background: '#ef4444', color: 'white', borderRadius: '50%', width: '24px', height: '24px', border: 'none', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>✕</button>
                           </div>
                       ))}
-
-                      {/* 3. Кнопка Додати */}
                       {totalImagesInEditor < 5 && (
                           <label style={{ width: '90px', height: '90px', borderRadius: '8px', border: '2px dashed #6366f1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: '#e0e7ff', color: '#4f46e5' }}>
                               <span style={{ fontSize: '24px' }}>+</span>
@@ -329,15 +296,38 @@ export default function LotDetailPage() {
                   </div>
               </div>
           )}
-
         </div>
       </div>
 
       {/* --- ПРАВА КОЛОНКА: ДЕТАЛІ --- */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         
-        {/* БЛОК 1: НАЗВА ТА ОПИС */}
+        {/* БЛОК 1: НАЗВА, ОПИС, ТИП */}
         <div style={{ background: 'white', borderRadius: '16px', padding: '2rem', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)' }}>
+          
+          {/* --- НОВЕ: ВІДОБРАЖЕННЯ ТИПУ ЛОТА --- */}
+          <div style={{ marginBottom: '10px' }}>
+              {lot.lot_type === 'charity' ? (
+                  <span style={{ 
+                      background: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', 
+                      color: 'white', padding: '6px 12px', borderRadius: '20px', 
+                      fontSize: '0.85rem', fontWeight: 'bold', display: 'inline-block',
+                      boxShadow: '0 4px 10px rgba(219, 39, 119, 0.3)'
+                  }}>
+                      ❤️ Благодійний лот
+                  </span>
+              ) : (
+                  <span style={{ 
+                      background: '#f3f4f6', 
+                      color: '#4b5563', padding: '6px 12px', borderRadius: '20px', 
+                      fontSize: '0.85rem', fontWeight: '600', display: 'inline-block',
+                      border: '1px solid #e5e7eb'
+                  }}>
+                      💼 Звичайний лот
+                  </span>
+              )}
+          </div>
+
           {isEditing ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                 <div>
@@ -388,30 +378,17 @@ export default function LotDetailPage() {
 
           {isEditing && (
               <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
-                  <button onClick={handleSaveEdit} style={{ background: '#16a34a', color: 'white', padding: '10px 20px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>💾 Зберегти зміни</button>
+                  <button onClick={handleSaveEdit} style={{ background: '#16a34a', color: 'white', padding: '10px 20px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>💾 Зберегти</button>
                   <button onClick={() => { setIsEditing(false); setImagesToDelete([]); setNewImages([]); setNewImagesPreview([]); }} style={{ background: '#f3f4f6', color: '#374151', padding: '10px 20px', borderRadius: '8px', border: 'none', cursor: 'pointer' }}>Скасувати</button>
               </div>
           )}
           
-          {/* --- СПЕЦІАЛЬНИЙ БЛОК: CLOSED UNSOLD (Для продавця) --- */}
+          {/* Блок Відновлення (Restore) */}
           {!isEditing && isClosedUnsold && isSeller && (
                 <div style={{marginTop:'20px', padding:'15px', background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:'8px'}}>
                     <h4 style={{marginTop:0, color:'#9a3412'}}>⚠️ Лот закритий без ставок</h4>
-                    <p style={{fontSize:'0.9rem', color:'#c2410c'}}>
-                        Цей лот буде автоматично видалений з системи через 24 години після закриття.
-                        Ви можете відновити його зараз, щоб дати йому другий шанс.
-                    </p>
-                    <button 
-                        onClick={handleRestoreLot}
-                        style={{
-                            width:'100%', padding:'12px', 
-                            background:'#ea580c', color:'white', fontWeight:'bold', 
-                            border:'none', borderRadius:'8px', cursor:'pointer',
-                            boxShadow:'0 2px 5px rgba(234, 88, 12, 0.3)'
-                        }}
-                    >
-                        🔄 Відновити лот (Активувати)
-                    </button>
+                    <p style={{fontSize:'0.9rem', color:'#c2410c'}}>Цей лот буде видалений через 24 години. Ви можете відновити його зараз.</p>
+                    <button onClick={handleRestoreLot} style={{width:'100%', padding:'12px', background:'#ea580c', color:'white', fontWeight:'bold', border:'none', borderRadius:'8px', cursor:'pointer'}}>🔄 Відновити лот</button>
                 </div>
           )}
 
@@ -423,74 +400,55 @@ export default function LotDetailPage() {
             </div>
           )}
           
-          {!isEditing && lot.status === 'active' && !lot.payment_deadline && (
-             <div style={{ padding: '1.25rem', background: '#f9fafb', borderRadius: '12px', border: '1px solid #e5e7eb' }}>
-                <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '0.5rem', fontWeight: '600' }}>Статус</div>
-                <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#374151' }}>Аукціон триває (безстроковий)</div>
-             </div>
-          )}
+          {!isEditing && lot.status === 'active'}
         </div>
 
-        {/* Картка продавця (БЕЗ АВАТАРКИ) */}
+        {/* Продавець */}
         {lot.seller && (
-          <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)', display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-              <div>
-                <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '4px' }}>Продавець</div>
-                <div style={{ fontWeight: '700', color: '#1f2937', fontSize: '1.1rem' }}>{lot.seller.username || "Користувач"}</div>
-                {lot.seller.phone_number && <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>{lot.seller.phone_number}</div>}
-              </div>
+          <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)' }}>
+              <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '4px' }}>Продавець</div>
+              <div style={{ fontWeight: '700', color: '#1f2937', fontSize: '1.1rem' }}>{lot.seller.username || "Користувач"}</div>
+              {lot.seller.phone_number && <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>{lot.seller.phone_number}</div>}
           </div>
         )}
 
         {/* --- ЗОНА ДІЙ --- */}
 
-        {/* 1. Активний лот: Ставки (Сховано при редагуванні) */}
+        {/* Ставки */}
         {!isEditing && !isClosedUnsold && lot.status === 'active' && !isSeller && (
           <div style={{ background: '#eff6ff', borderRadius: '16px', padding: '2rem', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)', border: '2px solid #e0e7ff' }}>
             {!isAuthenticated ? (
-              <button onClick={() => loginWithRedirect()} style={{ width: '100%', padding: '1rem', background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', color: 'white', fontWeight: '700', fontSize: '1.1rem', borderRadius: '12px', border: 'none', cursor: 'pointer', boxShadow: '0 4px 10px rgba(99, 102, 241, 0.3)' }}>
-                Увійдіть, щоб робити ставки
-              </button>
+              <button onClick={() => loginWithRedirect()} style={{ width: '100%', padding: '1rem', background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', color: 'white', fontWeight: '700', fontSize: '1.1rem', borderRadius: '12px', border: 'none', cursor: 'pointer', boxShadow: '0 4px 10px rgba(99, 102, 241, 0.3)' }}>Увійдіть</button>
             ) : (
               <div>
-                <label style={{ display: 'block', marginBottom: '1rem', fontWeight: '700', fontSize: '1.1rem', color: '#374151' }}>
-                  Ваша ставка (мін: ${minNextBid})
-                </label>
+                <label style={{ display: 'block', marginBottom: '1rem', fontWeight: '700', fontSize: '1.1rem', color: '#374151' }}>Ваша ставка (мін: ${minNextBid})</label>
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                  <input type="number" value={bidAmount} onChange={e => setBidAmount(e.target.value)} placeholder={`$${minNextBid}`}
-                    style={{ flex: 1, padding: '1rem', fontSize: '1.1rem', borderRadius: '12px', border: '2px solid #cbd5e1', outline: 'none', transition: 'border 0.2s' }} />
-                  <button onClick={handleBid} style={{ padding: '1rem 2rem', background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', color: 'white', fontWeight: '700', fontSize: '1.1rem', borderRadius: '12px', border: 'none', cursor: 'pointer', boxShadow: '0 4px 10px rgba(99, 102, 241, 0.3)' }}>
-                    Зробити ставку
-                  </button>
+                  <input type="number" value={bidAmount} onChange={e => setBidAmount(e.target.value)} placeholder={`$${minNextBid}`} style={{ flex: 1, padding: '1rem', fontSize: '1.1rem', borderRadius: '12px', border: '2px solid #cbd5e1', outline: 'none' }} />
+                  <button onClick={handleBid} style={{ padding: '1rem 2rem', background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', color: 'white', fontWeight: '700', fontSize: '1.1rem', borderRadius: '12px', border: 'none', cursor: 'pointer', boxShadow: '0 4px 10px rgba(99, 102, 241, 0.3)' }}>Зробити ставку</button>
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* 2. Продавець: Кнопка завершення (Сховано при редагуванні) */}
+        {/* Продавець: Завершити */}
         {!isEditing && !isClosedUnsold && isSeller && lot.status === 'active' && activeBids.length > 0 && (
              <div style={{ background: '#fffbeb', borderRadius: '16px', padding: '1.5rem', border: '2px solid #fde68a' }}>
                  <h3 style={{ marginTop: 0, color: '#92400e', fontSize: '1.2rem' }}>Керування лотом</h3>
-                 <p style={{ color: '#b45309', marginBottom: '1rem' }}>Ви можете завершити аукціон зараз. Поточний лідер автоматично стане переможцем.</p>
-                 <button onClick={handleCloseAuction} style={{ width: '100%', padding: '1rem', background: '#f59e0b', color: 'white', fontWeight: '700', fontSize: '1.1rem', borderRadius: '12px', border: 'none', cursor: 'pointer', boxShadow: '0 4px 10px rgba(245, 158, 11, 0.3)' }}>
-                    🛑 Завершити аукціон
-                 </button>
+                 <p style={{ color: '#b45309', marginBottom: '1rem' }}>Ви можете завершити аукціон зараз.</p>
+                 <button onClick={handleCloseAuction} style={{ width: '100%', padding: '1rem', background: '#f59e0b', color: 'white', fontWeight: '700', fontSize: '1.1rem', borderRadius: '12px', border: 'none', cursor: 'pointer', boxShadow: '0 4px 10px rgba(245, 158, 11, 0.3)' }}>🛑 Завершити аукціон</button>
              </div>
         )}
 
-        {/* 3. Переможець: Оплата */}
+        {/* Оплата */}
         {isPendingPayment && isWinner && !isPaymentDeadlinePassed && (
             <div style={{ padding: '2rem', background: '#ecfdf5', borderRadius: '16px', border: '2px solid #d1fae5', textAlign: 'center' }}>
                 <h3 style={{ color: '#065f46', marginTop: 0, fontSize: '1.5rem' }}>Вітаємо! Ви перемогли 🎉</h3>
-                <p style={{ marginBottom: '1.5rem', color: '#047857', fontSize: '1.1rem' }}>Ваша ставка <strong>${highestBid?.amount}</strong> виграла.</p>
-                <button onClick={handlePayment} style={{ padding: '1rem 3rem', background: '#10b981', color: 'white', fontWeight: '800', fontSize: '1.2rem', borderRadius: '12px', border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)' }}>
-                    ПЕРЕЙТИ ДО ОПЛАТИ
-                </button>
+                <button onClick={handlePayment} style={{ padding: '1rem 3rem', background: '#10b981', color: 'white', fontWeight: '800', fontSize: '1.2rem', borderRadius: '12px', border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)' }}>ПЕРЕЙТИ ДО ОПЛАТИ</button>
             </div>
         )}
 
-        {/* 3.1. Переможець прострочив */}
+        {/* Переможець не встиг */}
         {isPendingPayment && isWinner && isPaymentDeadlinePassed && (
             <div style={{ padding: '2rem', background: '#fef2f2', borderRadius: '16px', border: '2px solid #fecaca', textAlign: 'center' }}>
                 <h3 style={{ color: '#991b1b', marginTop: 0 }}>⚠️ Час вичерпано</h3>
@@ -498,18 +456,15 @@ export default function LotDetailPage() {
             </div>
         )}
 
-        {/* 4. Не переможець */}
+        {/* Не переможець */}
         {isPendingPayment && !isWinner && (
             <div style={{ padding: '1.5rem', background: '#f3f4f6', borderRadius: '16px', border: '1px solid #e5e7eb' }}>
                 <h3 style={{ marginTop: 0, color: '#374151' }}>Аукціон завершено</h3>
                 <p style={{ color: '#6b7280' }}>Переможець: <strong>{highestBid ? `Користувач #${highestBid.user_id}` : "Ставок не було"}</strong></p>
-                {lot.payment_deadline && (
-                    <p style={{ fontSize: '0.9rem', color: '#ef4444', fontWeight: '600' }}>Очікуємо оплати від переможця...</p>
-                )}
             </div>
         )}
 
-        {/* 5. Продано */}
+        {/* Продано */}
         {lot.status === 'sold' && (
             <div style={{ padding: '2rem', background: '#f0fdf4', borderRadius: '16px', border: '2px solid #bbf7d0', textAlign: 'center' }}>
                 <h3 style={{ color: '#166534', marginTop: 0, fontSize: '1.5rem' }}>Лот успішно продано 🔒</h3>
@@ -517,15 +472,11 @@ export default function LotDetailPage() {
         )}
 
         {/* Історія ставок */}
-        {/* Показуємо тільки якщо не редагуємо */}
         {!isEditing && (
             <div style={{ background: 'white', borderRadius: '16px', padding: '2rem', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
                 <h3 style={{ marginTop: 0, marginBottom: '1.5rem', color: '#1f2937', fontSize: '1.3rem', fontWeight: '700' }}>Історія ставок ({activeBids.length})</h3>
-                
                 {activeBids.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280', background: '#f9fafb', borderRadius: '12px', border: '1px dashed #d1d5db' }}>
-                        Ставок ще немає. Будьте першим!
-                    </div>
+                    <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280', background: '#f9fafb', borderRadius: '12px', border: '1px dashed #d1d5db' }}>Ставок ще немає. Будьте першим!</div>
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                         {activeBids.map((bid, index) => (
@@ -539,9 +490,7 @@ export default function LotDetailPage() {
                                     </div>
                                 </div>
                             </div>
-                            <div style={{ color: '#9ca3af', fontSize: '0.9rem' }}>
-                                {new Date(bid.timestamp).toLocaleString('uk-UA')}
-                            </div>
+                            <div style={{ color: '#9ca3af', fontSize: '0.9rem' }}>{new Date(bid.timestamp).toLocaleString('uk-UA')}</div>
                         </div>
                         ))}
                     </div>
