@@ -36,7 +36,6 @@ class Notification(Base):
 
     recipient = relationship("User", back_populates="notifications")
 
-# that is a....lot of fields, like REALLY lot, but i don't have time to bother with it
 class Lot(Base):
     __tablename__ = "lots"
     id = Column(Integer, primary_key=True, index=True)
@@ -76,7 +75,7 @@ class Bid(Base):
     is_active = Column(Boolean, default=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     lot_id = Column(Integer, ForeignKey("lots.id"))
-    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+    # cancelled_at - ВИДАЛЕНО, бо тепер hard delete
     bidder = relationship("User", back_populates="bids")
     lot = relationship("Lot", back_populates="bids")
 

@@ -29,7 +29,7 @@ async def get_my_bids(
 
 # --- 2. ПОТІМ РОУТИ З ДИНАМІЧНИМИ ID ({id}) ---
 
-# Скасувати ставку (DELETE)
+# Скасувати ставку (HARD DELETE + ОНОВЛЕННЯ ЦІНИ)
 @router.delete("/{bid_id}")
 async def cancel_bid(
     bid_id: int,
@@ -50,7 +50,6 @@ async def cancel_bid(
     lot = bid.lot
 
     # 2. Перевірка статусу лота
-    # Можна скасувати, якщо лот активний АБО якщо це pending_payment (перемога)
     if lot.status not in ["active", "pending_payment"]:
         raise HTTPException(status_code=400, detail="Cannot cancel bid on sold or closed auction")
 
@@ -63,10 +62,10 @@ async def cancel_bid(
         if current_winner and current_winner.id != bid.id:
              raise HTTPException(status_code=400, detail="You can only cancel if you are the current winner")
 
-    # 3. "М'яке" видалення (деактивація)
-    bid.is_active = False
+    # 3. HARD DELETE - Фізично видаляємо ставку
+    await db.delete(bid)
     
-    # 4. ПЕРЕРАХУНОК (Хто тепер лідер?)
+    # 4. ПЕРЕРАХУНОК ЦІНИ (Хто тепер лідер?)
     # Шукаємо наступну найвищу АКТИВНУ ставку
     next_best_bid_q = select(Bid).where(
         Bid.lot_id == lot.id, 
@@ -89,15 +88,16 @@ async def cancel_bid(
                 minutes=lot.payment_deadline_minutes
             )
     else:
-        # Ставок більше немає
+        # Ставок більше немає - ПОВЕРТАЄМО до стартової ціни
         lot.current_price = lot.start_price
         
+        # Якщо лот був у стані очікування оплати, повертаємо його до активного
         if lot.status == "pending_payment":
             lot.status = "active"
             lot.payment_deadline = None
 
     await db.commit()
-    return {"message": "Bid cancelled"}
+    return {"message": "Bid cancelled successfully"}
 
 # Зробити ставку (POST)
 @router.post("/{lot_id}", response_model=BidOut)
@@ -123,13 +123,12 @@ async def place_bid(
         raise HTTPException(status_code=400, detail="Auction is closed")
     
     # 3. Валідація суми (має бути більша за поточну ціну + крок)
-    # Примітка: навіть якщо користувач перебиває сам себе, він має підняти ціну відповідно до кроку
     min_bid_amount = lot.current_price + lot.min_step
     
     if bid_data.amount < min_bid_amount:
         raise HTTPException(status_code=400, detail=f"Bid must be at least {min_bid_amount}")
 
-    # --- ГОЛОВНА ЗМІНА: ПЕРЕВІРКА НА ІСНУЮЧУ СТАВКУ ---
+    # --- ПЕРЕВІРКА НА ІСНУЮЧУ СТАВКУ ---
     existing_bid_query = select(Bid).where(
         Bid.lot_id == lot.id,
         Bid.user_id == current_user.id,
@@ -168,14 +167,12 @@ async def place_bid(
     return final_bid
 
 # Отримати історію ставок (GET)
-# 2. Отримати історію ставок для лота
 @router.get("/{lot_id}", response_model=List[BidOut])
 async def get_bids_by_lot(
     lot_id: int, 
     db: AsyncSession = Depends(get_db)
 ):
-    # --- ЗМІНА ТУТ: Додано Bid.is_active == True ---
-    # Ми не показуємо скасовані ставки (через несплату або видалення)
+    # Показуємо тільки АКТИВНІ ставки
     query = select(Bid)\
         .where(Bid.lot_id == lot_id, Bid.is_active == True)\
         .order_by(Bid.amount.desc())

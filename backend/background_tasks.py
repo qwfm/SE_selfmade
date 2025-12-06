@@ -10,8 +10,8 @@ from models import Lot, Bid, Notification
 
 async def check_expired_payments():
     """
-    Задача 1: Перевіряє прострочені оплати.
-    - Скасовує ставку переможця.
+    Задача: Перевіряє прострочені оплати.
+    - Видаляє ставку переможця (HARD DELETE).
     - Надсилає сповіщення про провал.
     - Передає перемогу наступному.
     """
@@ -43,20 +43,22 @@ async def check_expired_payments():
                     failed_bid = cw_res.scalar_one_or_none()
                     
                     if failed_bid:
-                        # 1. Скасовуємо ставку і ставимо мітку часу для видалення
-                        failed_bid.is_active = False
-                        failed_bid.cancelled_at = datetime.now(timezone.utc) # <--- ВАЖЛИВО для видалення через 10 хв
+                        # 1. Зберігаємо дані для сповіщення
+                        failed_user_id = failed_bid.user_id
                         
-                        # 2. Сповіщення невдасі
+                        # 2. HARD DELETE - Видаляємо ставку повністю
+                        await db.delete(failed_bid)
+                        
+                        # 3. Сповіщення невдасі
                         fail_notif = Notification(
-                            user_id=failed_bid.user_id,
-                            message=f"⏰ Час на оплату лота '{lot.title}' вичерпано. Вашу перемогу анульовано."
+                            user_id=failed_user_id,
+                            message=f"⏰ Час на оплату лота '{lot.title}' вичерпано. Вашу перемогу анульовано та ставку видалено."
                         )
                         db.add(fail_notif)
                         
-                        print(f"   -> Bid #{failed_bid.id} cancelled due to expiration.")
+                        print(f"   -> Bid #{failed_bid.id} deleted due to expiration.")
 
-                        # 3. Шукаємо наступного
+                        # 4. Шукаємо наступного (тепер після видалення попередньої ставки)
                         next_bid_q = select(Bid).where(
                             Bid.lot_id == lot.id, 
                             Bid.is_active == True
@@ -82,16 +84,17 @@ async def check_expired_payments():
                             db.add(new_win_notif)
                             print(f"   -> New winner found: User #{next_bid.user_id}")
                         else:
-                            # Нікого немає -> Лот знову активний
+                            # Нікого немає -> Лот знову активний, ціна повертається до стартової
                             lot.status = "active"
+                            lot.current_price = lot.start_price  # <--- ВАЖЛИВО: Повертаємо стартову ціну
                             lot.payment_deadline = None
                             
                             seller_notif = Notification(
                                 user_id=lot.seller_id,
-                                message=f"⚠️ Переможець лота '{lot.title}' не оплатив, і інших ставок немає. Лот знову активний."
+                                message=f"⚠️ Переможець лота '{lot.title}' не оплатив, і інших ставок немає. Лот знову активний з початковою ціною ${lot.start_price}."
                             )
                             db.add(seller_notif)
-                            print("   -> No other bids. Lot set to ACTIVE.")
+                            print("   -> No other bids. Lot set to ACTIVE with start price.")
                 
                 await db.commit()
 

@@ -453,7 +453,7 @@ export default function ProfilePage() {
                         {bid.lot && <Link to={`/lot/${bid.lot_id}`} style={linkBtnStyle}>Перейти</Link>}
                         
                         {/* Кнопка скасування тільки для АКТИВНИХ ставок */}
-                        {bid.is_active && bid.lot && (bid.lot.status === 'active' || (bid.lot.status === 'pending_payment' && isWon)) && (
+                        {bid.lot && (
                           <button 
                             onClick={() => handleCancelBid(bid.id)}
                             style={deleteBtnStyle}
