@@ -341,7 +341,7 @@ export default function ProfilePage() {
 
               {/* 2. Видалення лота */}
               <div style={{background:'#fef2f2', padding:'20px', borderRadius:'12px', marginBottom:'30px', border:'1px solid #fecaca'}}>
-                  <h4 style={{marginTop:0, color:'#991b1b'}}>🔥 Екстрене видалення лота</h4>
+                  <h4 style={{marginTop:0, color:'#991b1b'}}>🔥 Видалення лота</h4>
                   <div style={{display:'flex', gap:'10px'}}>
                       <input 
                         type="number" 
@@ -389,9 +389,9 @@ export default function ProfilePage() {
                                   <td style={tdStyle}>
                                       {!u.is_admin && (
                                           u.is_blocked ? (
-                                              <button onClick={() => handleUnblockUser(u.id)} style={{...linkBtnStyle, background:'#10b981', color:'white'}}>Розбанити</button>
+                                              <button onClick={() => handleUnblockUser(u.id)} style={{...linkBtnStyle, background:'#10b981', color:'white'}}>Розблокувати</button>
                                           ) : (
-                                              <button onClick={() => openBanModal(u.id)} style={{...linkBtnStyle, background:'#ef4444', color:'white'}}>ЗАБАНИТИ</button>
+                                              <button onClick={() => openBanModal(u.id)} style={{...linkBtnStyle, background:'#ef4444', color:'white'}}>Заблокувати</button>
                                           )
                                       )}
                                   </td>
@@ -537,13 +537,13 @@ export default function ProfilePage() {
               <div style={modalContentStyle}>
                   <h3 style={{marginTop:0, color:'#b91c1c'}}>🚫 Блокування користувача</h3>
                   <div style={{marginBottom:'15px'}}>
-                    <label style={labelStyle}>Причина бану:</label>
+                    <label style={labelStyle}>Причина Блокування:</label>
                     <input style={inputStyle} value={banForm.reason} onChange={e => setBanForm({...banForm, reason: e.target.value})} placeholder="Наприклад: Шахрайство" />
                   </div>
                   <div style={{marginBottom:'15px'}}>
                       <label style={{display:'flex', alignItems:'center', gap:'10px', cursor:'pointer'}}>
                           <input type="checkbox" checked={banForm.is_permanent} onChange={e => setBanForm({...banForm, is_permanent: e.target.checked})} style={{width:'20px', height:'20px'}} /> 
-                          <span style={{fontWeight:'bold'}}>Бан назавжди</span>
+                          <span style={{fontWeight:'bold'}}>Блокування назавжди</span>
                       </label>
                   </div>
                   {!banForm.is_permanent && (
@@ -554,7 +554,7 @@ export default function ProfilePage() {
                   )}
                   <p style={{fontSize:'0.85rem', color:'#ef4444', background:'#fef2f2', padding:'10px', borderRadius:'6px'}}>⚠️ Увага: Всі активні лоти та ставки цього користувача будуть автоматично видалені системою.</p>
                   <div style={{display:'flex', gap:'10px', marginTop:'20px'}}>
-                      <button onClick={handleBlockUser} style={{...editBtnStyle, background:'#ef4444', color:'white'}}>Підтвердити БАН</button>
+                      <button onClick={handleBlockUser} style={{...editBtnStyle, background:'#ef4444', color:'white'}}>Підтвердити блокування</button>
                       <button onClick={() => setShowBanModal(false)} style={{...editBtnStyle, background:'#f3f4f6', color:'#374151'}}>Скасувати</button>
                   </div>
               </div>
