@@ -38,12 +38,20 @@ export default function LotDetailPage() {
       if (lotRes.data.images?.length > 0) setActiveImage(lotRes.data.images[0].image_url);
       else setActiveImage(lotRes.data.image_url);
       
-      const bidsRes = await api.get(`/bids/${id}`);
-      setBids(bidsRes.data);
-
+      // ⚠️ ВАЖЛИВО: Завантажуємо ставки ТІЛЬКИ якщо користувач авторизований
       if (isAuthenticated) {
+          try {
+              const bidsRes = await api.get(`/bids/${id}`);
+              setBids(bidsRes.data);
+          } catch (bidsError) {
+              console.error("Error loading bids:", bidsError);
+              setBids([]);
+          }
+
           const u = await api.get('/users/me');
           setMyDbId(u.data.id);
+      } else {
+          setBids([]); // Для неавторизованих - порожній масив
       }
     } catch (e) { setError("Лот не знайдено"); } finally { setLoading(false); }
   };
@@ -58,7 +66,7 @@ export default function LotDetailPage() {
       if(!window.confirm("Видалити?")) return;
       setImagesToDelete(p => [...p, imgId]);
   };
-  const handleAddNewPhoto = (e) => { /* ... той самий код ... */ 
+  const handleAddNewPhoto = (e) => {
       const files = Array.from(e.target.files);
       if (!files.length) return;
       const current = (lot.images?.length || 0) - imagesToDelete.length;
@@ -95,22 +103,18 @@ export default function LotDetailPage() {
 
   const handlePayment = () => navigate(`/payment/${lot.id}`);
 
-  // --- НОВА ЛОГІКА ДЛЯ КНОПОК ---
-  
-  // 1. ЗАВЕРШИТИ АУКЦІОН (тільки якщо є ставки)
   const handleCloseAuction = async () => {
     if (!window.confirm("Завершити аукціон і визнати поточного лідера переможцем?")) return;
     try { await api.post(`/lots/${id}/close`); fetchData(); } 
     catch (e) { alert(e.response?.data?.detail); }
   };
 
-  // 2. ВИДАЛИТИ ЛОТ (якщо немає ставок)
   const handleDeleteLot = async () => {
       if (!window.confirm("Видалити цей лот безповоротно?")) return;
       try {
           await api.delete(`/lots/${id}`);
           alert("Лот видалено.");
-          navigate('/lots'); // Повертаємось до списку
+          navigate('/lots');
       } catch (e) {
           alert(e.response?.data?.detail || "Помилка видалення");
       }
@@ -219,7 +223,11 @@ export default function LotDetailPage() {
                         <div>
                             <div style={{color:'#666', fontSize:'0.9rem'}}>ПОТОЧНА ЦІНА</div>
                             <div style={{fontSize:'2.5rem', fontWeight:'bold', color:'#4f46e5'}}>${lot.current_price}</div>
-                            <div style={{fontSize:'0.9rem'}}>Крок: ${lot.min_step}</div>
+                            
+                            {/* ⚠️ ПРИХОВУЄМО МІНІМАЛЬНИЙ КРОК ДЛЯ НЕАВТОРИЗОВАНИХ */}
+                            {isAuthenticated && (
+                                <div style={{fontSize:'0.9rem'}}>Крок: ${lot.min_step}</div>
+                            )}
                         </div>
                         <div style={{padding:'5px 15px', background:statusColor, color:'white', borderRadius:'10px', fontWeight:'bold'}}>{statusText}</div>
                     </div>
@@ -248,12 +256,11 @@ export default function LotDetailPage() {
               </div>
             )}
 
-            {/* --- КЕРУВАННЯ ЛОТОМ (ДИНАМІЧНА КНОПКА) --- */}
+            {/* КЕРУВАННЯ ЛОТОМ */}
             {!isEditing && isSeller && lot.status === 'active' && (
                 <div style={{background:'#fffbeb', padding:'20px', borderRadius:'16px', border:'2px solid #fde68a'}}>
                     <h3 style={{marginTop:0, color:'#92400e'}}>Керування лотом</h3>
                     
-                    {/* ЯКЩО Є СТАВКИ -> МОЖНА ЗАВЕРШИТИ */}
                     {activeBids.length > 0 ? (
                         <>
                             <p style={{color:'#b45309', marginBottom:'10px'}}>Є активні ставки. Ви можете завершити аукціон, і переможець буде визначений.</p>
@@ -262,7 +269,6 @@ export default function LotDetailPage() {
                             </button>
                         </>
                     ) : (
-                        /* ЯКЩО НЕМАЄ СТАВОК -> МОЖНА ТІЛЬКИ ВИДАЛИТИ */
                         <>
                             <p style={{color:'#b45309', marginBottom:'10px'}}>Ставок поки немає. Ви можете видалити лот, якщо передумали продавати.</p>
                             <button onClick={handleDeleteLot} style={{width:'100%', padding:'12px', background:'#ef4444', color:'white', fontWeight:'bold', border:'none', borderRadius:'8px', cursor:'pointer'}}>
@@ -281,7 +287,14 @@ export default function LotDetailPage() {
                             <input type="number" value={bidAmount} onChange={e=>setBidAmount(e.target.value)} placeholder={`Мін: $${Number(lot.current_price)+Number(lot.min_step)}`} style={{flex:1, padding:'10px', borderRadius:'8px', border:'1px solid #ccc'}} />
                             <button onClick={handleBid} style={{padding:'10px 20px', background:'#4f46e5', color:'white', border:'none', borderRadius:'8px', cursor:'pointer', fontWeight:'bold'}}>Зробити ставку</button>
                         </div>
-                    ) : <button onClick={loginWithRedirect} style={{width:'100%', padding:'10px'}}>Увійдіть щоб зробити ставку</button>}
+                    ) : (
+                        <div style={{textAlign:'center'}}>
+                            <p style={{marginBottom:'15px', color:'#4b5563'}}>Щоб зробити ставку, потрібно увійти</p>
+                            <button onClick={loginWithRedirect} style={{width:'100%', padding:'12px', background:'#4f46e5', color:'white', border:'none', borderRadius:'8px', cursor:'pointer', fontWeight:'bold'}}>
+                                Увійти до системи
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -311,7 +324,6 @@ export default function LotDetailPage() {
                         ПЕРЕЙТИ ДО ОПЛАТИ
                     </button>
 
-                    {/* НОВА КНОПКА ВІДМОВИ */}
                     <button 
                         onClick={async () => {
                             if(!window.confirm("Ви дійсно хочете відмовитись від перемоги? Лот перейде наступному учаснику.")) return;
@@ -340,10 +352,8 @@ export default function LotDetailPage() {
             </div>
         )}
 
-            
-
-            {/* ІСТОРІЯ СТАВОК */}
-            {!isEditing && (
+            {/* ⚠️ ІСТОРІЯ СТАВОК - ТІЛЬКИ ДЛЯ АВТОРИЗОВАНИХ */}
+            {!isEditing && isAuthenticated && (
                 <div style={{background:'white', padding:'20px', borderRadius:'16px', boxShadow:'0 4px 6px rgba(0,0,0,0.05)'}}>
                     <h3>Історія ставок ({activeBids.length})</h3>
                     {activeBids.map((bid, i) => (
@@ -353,6 +363,21 @@ export default function LotDetailPage() {
                         </div>
                     ))}
                     {activeBids.length===0 && <div style={{textAlign:'center', color:'#888'}}>Немає ставок</div>}
+                </div>
+            )}
+
+            {/* ⚠️ БЛОК ДЛЯ НЕАВТОРИЗОВАНИХ */}
+            {!isEditing && !isAuthenticated && (
+                <div style={{background:'#f9fafb', padding:'20px', borderRadius:'16px', border:'2px dashed #d1d5db', textAlign:'center'}}>
+                    <div style={{fontSize:'2rem', marginBottom:'10px'}}>🔒</div>
+                    <h3 style={{margin:'0 0 10px 0', color:'#4b5563'}}>Історія ставок прихована</h3>
+                    <p style={{color:'#6b7280', marginBottom:'15px'}}>Щоб переглянути історію ставок та мінімальний крок, потрібно увійти в систему</p>
+                    <button 
+                        onClick={loginWithRedirect} 
+                        style={{padding:'10px 20px', background:'#4f46e5', color:'white', border:'none', borderRadius:'8px', cursor:'pointer', fontWeight:'bold'}}
+                    >
+                        Увійти
+                    </button>
                 </div>
             )}
 
