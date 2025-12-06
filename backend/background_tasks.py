@@ -10,7 +10,7 @@ from models import Lot, Bid, Notification
 
 async def check_expired_payments():
     """
-    Задача: Перевіряє прострочені оплати.
+    Задача 1: Перевіряє прострочені оплати.
     - Видаляє ставку переможця (HARD DELETE).
     - Надсилає сповіщення про провал.
     - Передає перемогу наступному.
@@ -86,7 +86,7 @@ async def check_expired_payments():
                         else:
                             # Нікого немає -> Лот знову активний, ціна повертається до стартової
                             lot.status = "active"
-                            lot.current_price = lot.start_price  # <--- ВАЖЛИВО: Повертаємо стартову ціну
+                            lot.current_price = lot.start_price
                             lot.payment_deadline = None
                             
                             seller_notif = Notification(
@@ -106,20 +106,21 @@ async def check_expired_payments():
 async def delete_old_cancelled_bids():
     """
     Задача 2: Видаляє ставки, які були скасовані (cancelled_at) більше 10 хвилин тому.
+    ПРИМІТКА: У поточній версії ми робимо HARD DELETE одразу, тому ця задача не використовується.
+    Залишаємо на випадок майбутньої зміни логіки на SOFT DELETE.
     """
     while True:
         try:
             async with AsyncSessionLocal() as db:
                 now = datetime.now(timezone.utc)
-                # Час "Ч" = зараз мінус 10 хвилин
                 cutoff_time = now - timedelta(minutes=10)
                 
-                # Знаходимо ставки для фізичного видалення
+                # Знаходимо неактивні ставки старше 10 хвилин
+                # (У поточній версії таких не буде, бо ми робимо HARD DELETE)
                 query = select(Bid).where(
                     and_(
                         Bid.is_active == False,
-                        Bid.cancelled_at.isnot(None),
-                        Bid.cancelled_at < cutoff_time
+                        Bid.timestamp < cutoff_time
                     )
                 )
                 result = await db.execute(query)
@@ -138,6 +139,65 @@ async def delete_old_cancelled_bids():
             
         await asyncio.sleep(60) # Перевірка раз на хвилину
 
+async def close_inactive_lots():
+    """
+    Задача 3: Закриває лоти, які були активними без ставок 7+ днів
+    """
+    while True:
+        try:
+            async with AsyncSessionLocal() as db:
+                now = datetime.now(timezone.utc)
+                # Час "Ч" = зараз мінус 7 днів
+                cutoff_time = now - timedelta(days=7)
+                
+                # Знаходимо лоти для закриття:
+                # 1. Статус = active
+                # 2. Створені більше 7 днів тому
+                # 3. Немає жодної активної ставки
+                query = select(Lot).where(
+                    and_(
+                        Lot.status == "active",
+                        Lot.created_at < cutoff_time
+                    )
+                )
+                result = await db.execute(query)
+                old_lots = result.scalars().all()
+                
+                for lot in old_lots:
+                    # Перевіряємо чи є активні ставки
+                    bids_query = select(Bid).where(
+                        Bid.lot_id == lot.id,
+                        Bid.is_active == True
+                    )
+                    bids_result = await db.execute(bids_query)
+                    active_bids = bids_result.scalars().all()
+                    
+                    # Якщо ставок немає - закриваємо
+                    if len(active_bids) == 0:
+                        lot.status = "closed_unsold"
+                        lot.closed_at = now
+                        
+                        # Сповіщення продавцю
+                        notification = Notification(
+                            user_id=lot.seller_id,
+                            message=f"⏰ Ваш лот '{lot.title}' був автоматично закритий через відсутність ставок протягом 7 днів."
+                        )
+                        db.add(notification)
+                        
+                        print(f"[AUTO-CLOSE] Lot #{lot.id} '{lot.title}' closed due to inactivity (7+ days, no bids)")
+                
+                await db.commit()
+                
+        except Exception as e:
+            print(f"[Close Inactive Lots Error]: {e}")
+        
+        # Перевірка раз на годину (3600 секунд)
+        await asyncio.sleep(3600)
+
 async def start_background_tasks():
+    """
+    Запускає всі фонові задачі
+    """
     asyncio.create_task(check_expired_payments())
     asyncio.create_task(delete_old_cancelled_bids())
+    asyncio.create_task(close_inactive_lots())

@@ -262,3 +262,48 @@ async def delete_lot(
     await db.delete(lot)
     await db.commit()
     return {"message": "Lot deleted"}
+
+@router.post("/{lot_id}/reopen")
+async def reopen_lot(
+    lot_id: int,
+    current_user: User = Depends(get_current_user_db),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Дозволяє продавцю повторно відкрити лот, який був автоматично закритий
+    """
+    query = select(Lot).where(Lot.id == lot_id)
+    result = await db.execute(query)
+    lot = result.scalar_one_or_none()
+
+    if not lot:
+        raise HTTPException(status_code=404, detail="Lot not found")
+    
+    if lot.seller_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Можна відкрити тільки закриті лоти
+    if lot.status != "closed_unsold":
+        raise HTTPException(
+            status_code=400, 
+            detail="Only closed (unsold) lots can be reopened"
+        )
+    
+    # Повертаємо лот у активний стан
+    lot.status = "active"
+    lot.closed_at = None
+    
+    # Створюємо сповіщення
+    notification = Notification(
+        user_id=current_user.id,
+        message=f"✅ Ваш лот '{lot.title}' було повторно відкрито і знову активний!"
+    )
+    db.add(notification)
+    
+    await db.commit()
+    
+    return {
+        "message": "Lot reopened successfully", 
+        "status": lot.status,
+        "lot_id": lot.id
+    }

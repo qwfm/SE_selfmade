@@ -120,11 +120,23 @@ export default function LotDetailPage() {
       }
   };
 
+  const handleReopenLot = async () => {
+      if (!window.confirm("Повторно відкрити цей лот?")) return;
+      try {
+          await api.post(`/lots/${id}/reopen`);
+          alert("Лот знову активний!");
+          fetchData();
+      } catch (e) {
+          alert(e.response?.data?.detail || "Помилка відкриття");
+      }
+  };
+
   if (loading) return <div style={{padding:'40px', textAlign:'center'}}>Завантаження...</div>;
   if (!lot) return null;
 
   const isPending = lot.status === 'pending_payment';
   const isSold = lot.status === 'sold';
+  const isClosed = lot.status === 'closed_unsold';
   const activeBids = bids.filter(b => b.is_active !== false);
   const highestBid = activeBids[0];
   const isWinner = isAuthenticated && highestBid && highestBid.user_id === myDbId && (isPending || isSold);
@@ -134,6 +146,7 @@ export default function LotDetailPage() {
   let statusText = "Активний"; let statusColor = "#10b981"; 
   if (isSold) { statusText = "ПРОДАНО"; statusColor = "#ef4444"; }
   else if (isPending) { statusText = "ОЧІКУЄ ОПЛАТИ"; statusColor = "#f59e0b"; }
+  else if (isClosed) { statusText = "ЗАКРИТО"; statusColor = "#6b7280"; }
 
   const galleryImages = lot.images || [];
   const existingDisplay = galleryImages.filter(img => !imagesToDelete.includes(img.id));
@@ -245,6 +258,16 @@ export default function LotDetailPage() {
                         Дедлайн оплати: {new Date(lot.payment_deadline).toLocaleString()}
                     </div>
                 )}
+
+                {/* ⚠️ НОВЕ: Повідомлення про автоматичне закриття */}
+                {isClosed && isSeller && (
+                    <div style={{marginTop:'15px', padding:'15px', background:'#f9fafb', borderRadius:'8px', border:'1px solid #e5e7eb', color:'#6b7280'}}>
+                        <div style={{fontWeight:'bold', marginBottom:'5px'}}>📦 Лот закрито</div>
+                        <div style={{fontSize:'0.9rem'}}>
+                            Цей лот було автоматично закрито через відсутність ставок протягом 7 днів.
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* ПРОДАВЕЦЬ */}
@@ -256,7 +279,7 @@ export default function LotDetailPage() {
               </div>
             )}
 
-            {/* КЕРУВАННЯ ЛОТОМ */}
+            {/* КЕРУВАННЯ ЛОТОМ - тільки для active */}
             {!isEditing && isSeller && lot.status === 'active' && (
                 <div style={{background:'#fffbeb', padding:'20px', borderRadius:'16px', border:'2px solid #fde68a'}}>
                     <h3 style={{marginTop:0, color:'#92400e'}}>Керування лотом</h3>
@@ -279,12 +302,36 @@ export default function LotDetailPage() {
                 </div>
             )}
 
-            {/* ДІЇ ПОКУПЦЯ */}
-            {!isEditing && !isSold && lot.status === 'active' && !isSeller && (
+            {/* ⚠️ НОВЕ: Керування для ЗАКРИТИХ лотів */}
+            {!isEditing && isSeller && isClosed && (
+                <div style={{background:'#f9fafb', padding:'20px', borderRadius:'16px', border:'2px solid #e5e7eb'}}>
+                    <h3 style={{marginTop:0, color:'#4b5563'}}>🔄 Відкрити знову</h3>
+                    <p style={{color:'#6b7280', marginBottom:'15px', fontSize:'0.95rem'}}>
+                        Ви можете повторно відкрити цей лот. Він стане знову активним і буде доступний для ставок.
+                    </p>
+                    <div style={{display:'flex', gap:'10px'}}>
+                        <button 
+                            onClick={handleReopenLot} 
+                            style={{flex:1, padding:'12px', background:'#10b981', color:'white', fontWeight:'bold', border:'none', borderRadius:'8px', cursor:'pointer'}}
+                        >
+                            ♻️ Відкрити знову
+                        </button>
+                        <button 
+                            onClick={handleDeleteLot} 
+                            style={{padding:'12px 20px', background:'transparent', color:'#ef4444', fontWeight:'600', border:'1px solid #fecaca', borderRadius:'8px', cursor:'pointer'}}
+                        >
+                            Видалити
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* ДІЇ ПОКУПЦЯ - тільки для active */}
+            {!isEditing && !isSold && !isClosed && lot.status === 'active' && !isSeller && (
                 <div style={{background:'#eff6ff', padding:'20px', borderRadius:'16px', border:'2px solid #bfdbfe'}}>
                     {isAuthenticated ? (
                         <div style={{display:'flex', gap:'10px'}}>
-                            <input type="number" value={bidAmount} onChange={e=>setBidAmount(e.target.value)} placeholder={`Мін: $${Number(lot.current_price)+Number(lot.min_step)}`} style={{flex:1, padding:'10px', borderRadius:'8px', border:'1px solid #ccc'}} />
+                            <input type="number" value={bidAmount} onChange={e=>setBidAmount(e.target.value)} placeholder={`Мін: ${Number(lot.current_price)+Number(lot.min_step)}`} style={{flex:1, padding:'10px', borderRadius:'8px', border:'1px solid #ccc'}} />
                             <button onClick={handleBid} style={{padding:'10px 20px', background:'#4f46e5', color:'white', border:'none', borderRadius:'8px', cursor:'pointer', fontWeight:'bold'}}>Зробити ставку</button>
                         </div>
                     ) : (
@@ -295,6 +342,17 @@ export default function LotDetailPage() {
                             </button>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* ⚠️ НОВЕ: Повідомлення для закритих лотів (для покупців) */}
+            {isClosed && !isSeller && (
+                <div style={{background:'#f9fafb', padding:'20px', borderRadius:'16px', border:'2px solid #e5e7eb', textAlign:'center'}}>
+                    <div style={{fontSize:'2rem', marginBottom:'10px'}}>📦</div>
+                    <h3 style={{margin:'0 0 10px 0', color:'#6b7280'}}>Аукціон завершено</h3>
+                    <p style={{color:'#9ca3af', margin:0}}>
+                        Цей лот було закрито без продажу
+                    </p>
                 </div>
             )}
 
