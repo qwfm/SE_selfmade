@@ -1,3 +1,5 @@
+# backend/routers/admin.py
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -6,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List
 
 from database import get_db
-from models import User, Lot, Bid, Notification
+from models import User, Lot, Bid, Notification, LotImage  # ДОДАНО LotImage
 from schemas import UserOut, BlockUserRequest
 from dependencies import get_current_user_db
 
@@ -71,11 +73,22 @@ async def block_user(
     else:
         target_user.ban_until = datetime.now(timezone.utc) + timedelta(days=block_data.duration_days)
 
-    # 2. Видаляємо його ЛОТИ (Hard Delete)
+    # 2. СПОЧАТКУ видаляємо зображення лотів (щоб уникнути ForeignKey error)
+    # Знаходимо всі лоти користувача
+    lots_query = select(Lot).where(Lot.seller_id == user_id)
+    lots_result = await db.execute(lots_query)
+    user_lots = lots_result.scalars().all()
+    
+    # Видаляємо зображення для кожного лота
+    for lot in user_lots:
+        delete_images_query = delete(LotImage).where(LotImage.lot_id == lot.id)
+        await db.execute(delete_images_query)
+    
+    # 3. Тепер видаляємо самі ЛОТИ (Hard Delete)
     del_lots_query = delete(Lot).where(Lot.seller_id == user_id)
     await db.execute(del_lots_query)
     
-    # 3. Скасовуємо його СТАВКИ (Soft Delete + Recalculate Prices)
+    # 4. Скасовуємо його СТАВКИ (Soft Delete + Recalculate Prices)
     
     # А) Спочатку знаходимо ID лотів, де цей юзер мав АКТИВНІ ставки
     active_bids_query = select(Bid).where(Bid.user_id == user_id, Bid.is_active == True)
@@ -85,13 +98,10 @@ async def block_user(
     affected_lot_ids = {bid.lot_id for bid in bids_to_cancel}
 
     # Б) Деактивуємо ставки
-    # Ми використовуємо update замість delete, щоб зберегти історію "злочинів", 
-    # але is_active=False прибере їх з фронтенду та розрахунків
     deactivate_query = update(Bid).where(Bid.user_id == user_id).values(is_active=False)
     await db.execute(deactivate_query)
     
     # В) ПЕРЕРАХОВУЄМО ЦІНИ для постраждалих лотів
-    # Оскільки ми прибрали ставки лідера, ціна лота має впасти до наступної найвищої
     for lot_id in affected_lot_ids:
         # Шукаємо лот
         lot_q = select(Lot).where(Lot.id == lot_id)
@@ -139,9 +149,6 @@ async def unblock_user(
     target_user.ban_reason = None
     target_user.ban_until = None
     
-    # Примітка: Ми НЕ відновлюємо видалені лоти та ставки автоматично,
-    # бо це може створити конфлікти (наприклад, лот вже продано іншому).
-    
     await db.commit()
     return {"message": "User unblocked"}
 
@@ -149,7 +156,7 @@ async def unblock_user(
 @router.delete("/lots/{lot_id}")
 async def admin_delete_lot(
     lot_id: int,
-    reason: str = "Порушення правил платформи", # <--- Причина за замовчуванням
+    reason: str = "Порушення правил платформи",
     current_user: User = Depends(get_current_user_db),
     db: AsyncSession = Depends(get_db)
 ):
@@ -165,6 +172,10 @@ async def admin_delete_lot(
 
     seller_id = lot.seller_id
     lot_title = lot.title
+
+    # 2. Видаляємо зображення лота ПЕРЕД видаленням самого лота
+    delete_images_query = delete(LotImage).where(LotImage.lot_id == lot_id)
+    await db.execute(delete_images_query)
 
     # 3. Видаляємо лот з БД
     await db.delete(lot)
