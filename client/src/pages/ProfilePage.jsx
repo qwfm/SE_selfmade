@@ -109,11 +109,40 @@ export default function ProfilePage() {
 
   // --- ОБРОБНИКИ ---
   const handleSave = async () => {
+    const newErrors = {};
+    
+    // Валідація username
+    const trimmedUsername = form.username.trim();
+    if (!trimmedUsername) {
+      alert("Нікнейм не може бути порожнім");
+      return;
+    }
+    if (trimmedUsername.length < 2) {
+      alert("Нікнейм має містити мінімум 2 символи");
+      return;
+    }
+    if (trimmedUsername.length > 50) {
+      alert("Нікнейм не може перевищувати 50 символів");
+      return;
+    }
+
+    // Валідація телефону
+    const phoneError = validatePhone(form.phone_number);
+    if (phoneError) {
+      alert(phoneError);
+      return;
+    }
+
     try {
-      await api.patch('/users/me', form);
+      await api.patch('/users/me', {
+        username: trimmedUsername,
+        phone_number: form.phone_number.trim()
+      });
       setIsEditing(false);
       loadAll();
-    } catch (err) { alert(err.message); }
+    } catch (err) { 
+      alert(err.response?.data?.detail || err.message); 
+    }
   };
 
   const handleDeleteLot = async (lotId) => {
@@ -174,10 +203,29 @@ export default function ProfilePage() {
       setShowBanModal(true);
   };
 
+  const validatePhone = (phone) => {
+    const cleaned = phone.replace(/[^\d+]/g, '');
+    const phoneRegex = /^\+\d{10,15}$/;
+    
+    if (!phone.trim()) {
+      return "Номер телефону обов'язковий";
+    }
+    
+    if (!phone.startsWith('+')) {
+      return "Номер має починатись з + (міжнародний формат)";
+    }
+    
+    if (!phoneRegex.test(cleaned)) {
+      return "Невірний формат. Приклад: +380501234567";
+    }
+    
+    return null;
+  };
+
   const handleBlockUser = async () => {
       try {
           await api.post(`/admin/users/${banTargetId}/block`, banForm);
-          alert("Користувача заблоковано, його лоти видалено.");
+          alert("Користувача заблоковано, його лоти видалено, ставки скасовано.");
           setShowBanModal(false);
           fetchAdminUsers();
       } catch (err) {
@@ -244,7 +292,19 @@ export default function ProfilePage() {
             </div>
             <div>
               <label style={labelStyle}>Телефон</label>
-              <input style={inputStyle} value={form.phone_number} onChange={e => setForm({...form, phone_number: e.target.value})} placeholder="+380..." />
+              <input 
+                style={inputStyle} 
+                value={form.phone_number} 
+                onChange={e => {
+                  // Дозволяємо тільки цифри, + та пробіли
+                  const formatted = e.target.value.replace(/[^\d+\s]/g, '');
+                  setForm({...form, phone_number: formatted});
+                }} 
+                placeholder="+380..."
+              />
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '5px' }}>
+                Міжнародний формат: +[код країни][номер]
+              </p>
             </div>
             <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
               <button onClick={handleSave} style={{...editBtnStyle, background: '#10b981', color: 'white'}}>Зберегти</button>
